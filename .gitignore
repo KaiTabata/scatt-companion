@@ -40,3 +40,6 @@ extra.db
 *.app
 dist-info/
 .eggs/
+
+# Icon iconset intermediate (regenerable)
+assets/icon.iconset/

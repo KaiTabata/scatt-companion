@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCATT Prone Analyzer — SCATT Expert 補助分析ツール</title>
+<meta name="description" content="SCATT Expert に並べて使う補助分析ツール。伏射特化、本家にない手のふるえ・呼吸 FFT、反動詳細、心拍/HRV、自然言語フィードバック。">
+<meta property="og:title" content="SCATT Prone Analyzer">
+<meta property="og:description" content="SCATT Expert に並べて使う伏射補助分析ツール">
+<meta property="og:image" content="img/icon.png">
+<link rel="icon" type="image/png" href="img/icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="hero">
+  <nav class="nav">
+    <div class="nav-logo">
+      <img src="img/icon.png" alt="SCATT Prone Analyzer">
+      <span>SCATT Prone Analyzer</span>
+    </div>
+    <div class="nav-links">
+      <a href="#features">機能</a>
+      <a href="#tour">タブ</a>
+      <a href="#install">インストール</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/KaiTabata/scatt-analyzer" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </nav>
+  <div class="hero-inner">
+    <img src="img/icon.png" alt="" class="hero-icon">
+    <h1>SCATT Expert に<br>並べて使う、伏射特化の分析ツール</h1>
+    <p class="hero-sub">
+      本家にない手のふるえ・呼吸 FFT、反動詳細、Cant 統計、心拍 / HRV、自然言語フィードバック。<br>
+      ローカル動作・オフライン完結。
+    </p>
+    <div class="hero-cta">
+      <a class="btn primary" href="#install">インストール</a>
+      <a class="btn secondary" href="https://github.com/KaiTabata/scatt-analyzer" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <p class="hero-note">SCATT Electronics 公式ではありません。Apache License 2.0。</p>
+  </div>
+</header>
+
+<section id="why" class="section">
+  <div class="container">
+    <h2>SCATT の隣で使うツール</h2>
+    <p class="lead">
+      SCATT Expert はターゲット軌跡やスコアを表示するが、伏射競技者が知りたい
+      <strong>「最終 0.5 秒の安定度」「手のふるえの周波数」「反動の振幅と方向」「心拍の影響」</strong>
+      といった補助情報は分散していたり、出ていなかったりする。
+    </p>
+    <p class="lead">
+      本ソフトは SCATT の <code>storage.dat</code> をローカルで読み取り、
+      <strong>SCATT が出していない指標</strong>を中心に、
+      <strong>個人の過去 shot との z-score 比較</strong>と
+      <strong>自然言語コメント</strong>で振り返りやすくする。
+    </p>
+    <div class="screens">
+      <figure>
+        <img src="img/dashboard.png" alt="Dashboard スクリーンショット" onerror="this.style.display='none'">
+        <figcaption>Dashboard — 10a / S1 / S2 + z-score 順の指標表</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="section bg-alt">
+  <div class="container">
+    <h2>主要な機能</h2>
+    <div class="grid grid-3">
+      <article class="card">
+        <h3>本家互換指標</h3>
+        <p><strong>10a / 10a-0.5 / 10b / 9c / S1 / S2</strong> を SCATT と同じ命名で表示。本家の数字を見慣れた人もそのまま使える。</p>
+      </article>
+      <article class="card">
+        <h3>個人 z-score ランキング</h3>
+        <p>過去 shot の μ / σ から偏差を計算、<strong>悪い順にソート + 色付け</strong>。「今回特にダメだった指標」が一目で分かる。</p>
+      </article>
+      <article class="card">
+        <h3>手のふるえ・呼吸 FFT</h3>
+        <p>pre-trigger の X/Y を <strong>8–12Hz の手のふるえ帯</strong>と <strong>0.15–0.5Hz の呼吸帯</strong>に分けて周波数解析。</p>
+      </article>
+      <article class="card">
+        <h3>反動の詳細分析</h3>
+        <p>peak 振幅、settle time、フォロースルー R95、<strong>反動方向の円形 σ</strong>。発射後 1 秒を細かく見る。</p>
+      </article>
+      <article class="card">
+        <h3>心拍 / HRV (BLE)</h3>
+        <p>Apple Watch + HeartCast や胸ベルト (Polar H10 等) から BLE Heart Rate Profile を受信。発射時 HR と 30 秒 RMSSD を shot に紐付け。</p>
+      </article>
+      <article class="card">
+        <h3>自然言語フィードバック</h3>
+        <p>ネット不要・LLM なしで動作。「呼吸帯が顕著に大きい」「後半 S2 が +12mm 悪化」のような所見を <strong>ローカル完結</strong>で生成。</p>
+      </article>
+      <article class="card">
+        <h3>セッション横断レビュー</h3>
+        <p>過去全セッションを一覧、ベスト/ワースト、前半 vs 後半トレンド比較。Series 10 発ごとに本家風ブロック表示。</p>
+      </article>
+      <article class="card">
+        <h3>異常 shot の自動削除</h3>
+        <p>発射点 200mm 以上 (誤反応) を SCATT 側 DB ごと物理削除。閾値は調整可能。</p>
+      </article>
+      <article class="card">
+        <h3>CSV / JSON エクスポート</h3>
+        <p>pandas / Excel / R で解析するための shot 単位エクスポート。全 session 集計 CSV も出力可。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="tour" class="section">
+  <div class="container">
+    <h2>タブ別ツアー</h2>
+    <div class="tabtour">
+      <div class="tabtour-item">
+        <h3>📊 Dashboard</h3>
+        <p>主役 4 KPI(10a / 10a-0.5 / S1 / S2)+ 全指標表(z-score 悪い順) + ローカル NLG フィードバック + 自由に選べる 4 枠グラフ。</p>
+        <img src="img/dashboard.png" alt="Dashboard" onerror="this.style.display='none'">
+      </div>
+      <div class="tabtour-item">
+        <h3>📁 Sessions</h3>
+        <p>上=全セッション一覧、下=サブタブ(Overview / Recoil / Cant / Drift / Spectrum)。行クリックでサブタブが連動更新。</p>
+        <img src="img/sessions.png" alt="Sessions" onerror="this.style.display='none'">
+      </div>
+      <div class="tabtour-item">
+        <h3>🎯 Shots</h3>
+        <p>session 内 shot を 10 発 Series ごとにブロック化。各 Series にターゲット + 弾着 + 集計テーブルが付く本家風表示。</p>
+        <img src="img/shots.png" alt="Shots" onerror="this.style.display='none'">
+      </div>
+      <div class="tabtour-item">
+        <h3>⊕ Target</h3>
+        <p>ISSF 50m ライフルターゲット + 現在 trace の軌跡(緑 = 狙い、赤 = 反動、黄 = 発射点)。</p>
+        <img src="img/target.png" alt="Target" onerror="this.style.display='none'">
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install" class="section bg-alt">
+  <div class="container">
+    <h2>インストール</h2>
+    <h3>方法 A: .app バンドル (近日配布予定)</h3>
+    <p>DMG をダウンロードして Applications にドラッグ。初回起動は右クリック → 開く。</p>
+
+    <h3>方法 B: git clone (今すぐ)</h3>
+    <pre><code># 前提: macOS, Homebrew, Python 3.10+
+brew install python@3.10
+git clone https://github.com/KaiTabata/scatt-analyzer.git
+cd scatt-analyzer
+make install   # PyQt6, numpy, pyqtgraph, bleak をインストール
+make gui       # GUI 起動 (Finder からは scatt-gui.command をダブルクリックでも可)</code></pre>
+
+    <h3>動作環境</h3>
+    <ul>
+      <li>macOS 11 以降</li>
+      <li>Python 3.10 以上</li>
+      <li>SCATT Expert がインストールされていて <code>~/Library/Application Support/SCATT Electronics/Scatt Expert/storage.dat</code> が存在すること</li>
+      <li>(任意) BLE 心拍計 — Apple Watch + HeartCast や胸ベルト</li>
+    </ul>
+  </div>
+</section>
+
+<section id="data" class="section">
+  <div class="container">
+    <h2>データ仕様(リバース結果)</h2>
+    <p>SCATT Expert の <code>trace.data</code> BLOB を独自リバースで完全復号:</p>
+    <ol>
+      <li>固定 XOR キー(16 バイト)で CBC 風デコード</li>
+      <li>1B drop → 2B qChecksum → qUncompress(zlib + 4B BE length)</li>
+      <li>結果は QDataStream 形式、各サンプル 12B = (X float32 BE, Y float32 BE, Cant float32 BE)</li>
+      <li>サンプリングレートは <code>sessions.sample_rate</code>(典型 120Hz)</li>
+    </ol>
+    <p>本ソフトは <strong>storage.dat を読み取る</strong>のと、明示的な操作で <strong>異常 shot の削除</strong>(<code>DELETE FROM shots</code>)を行う。書き込み内容はそれ以外にない。</p>
+    <p>SCATT が保存しない補助データ(心拍 / HRV / 将来の IMU)は別 SQLite (<code>~/Library/Application Support/scatt-prone-analyzer/extra.db</code>)に保存する。</p>
+  </div>
+</section>
+
+<section id="faq" class="section bg-alt">
+  <div class="container">
+    <h2>FAQ</h2>
+    <details>
+      <summary>これは SCATT Electronics の公式ソフトですか?</summary>
+      <p>いいえ。SCATT が保存した自分の射撃データをローカルで読み取って解析する、非公式の補助ツールです。</p>
+    </details>
+    <details>
+      <summary>SCATT のデータを壊しませんか?</summary>
+      <p>基本は read-only。明示的に「異常 shot を一括削除」ボタンを押した時だけ、SCATT 側 DB の <code>shots</code> / <code>traces</code> 行を物理削除します。確認ダイアログあり、取消不可。</p>
+    </details>
+    <details>
+      <summary>SCATT 動作中に同時に使えますか?</summary>
+      <p>使えます。read-only モード + busy_timeout で、SCATT の書き込みと並行して読み出せる設計。動作中のセッションも自動追随します。</p>
+    </details>
+    <details>
+      <summary>立射・膝射でも使えますか?</summary>
+      <p>機能としては動きますが、現在の閾値感(R95 良/悪、HOLD time 等)は伏射前提のチューニング。閾値は Settings タブで調整できます。</p>
+    </details>
+    <details>
+      <summary>Windows でも動きますか?</summary>
+      <p>本体の Python コードはマルチプラットフォームですが、検証は macOS のみ。<code>caffeinate</code> や Launcher (.command) は macOS 専用です。Windows 対応は今のところ予定なし。</p>
+    </details>
+    <details>
+      <summary>Apple Watch の心拍をどうやって受けるの?</summary>
+      <p>Watch + iPhone に <strong>HeartCast</strong> 等の BLE Heart Rate Profile ブロードキャストアプリを入れ、iPhone から放送 → Mac で <code>bleak</code> 経由で受信。胸ベルト (Polar H10 等) も同じインターフェースで動きます。</p>
+    </details>
+    <details>
+      <summary>データを別 Mac に持っていけますか?</summary>
+      <p>SCATT 本体のデータ (<code>storage.dat</code>) は SCATT がコピー対応。本ソフトの心拍記録 (<code>extra.db</code>) は <code>~/Library/Application Support/scatt-prone-analyzer/</code> をコピーすれば移行できます。</p>
+    </details>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="container">
+    <p>SCATT Prone Analyzer · Apache License 2.0 · <a href="https://github.com/KaiTabata/scatt-analyzer">GitHub</a></p>
+    <p class="small">SCATT, SCATT Expert は SCATT Electronics の商標です。本ソフトは同社の公式ではない非公式の補助ツールです。</p>
+  </div>
+</footer>
+
+</body>
+</html>

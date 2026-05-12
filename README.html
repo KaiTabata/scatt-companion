@@ -150,16 +150,17 @@
 <h2 id="what">何ができるか</h2>
 
 <ul>
-  <li>SCATT Expert が保存した <code>trace.data</code> BLOB を完全復号(独自 XOR + qCompress を解読済み)</li>
-  <li>各サンプルから <strong>X 座標 (mm)</strong> / <strong>Y 座標 (mm)</strong> / <strong>Cant 角 (radian)</strong> を取得</li>
-  <li>リアルタイム表示: SCATT Expert で射撃中、新しい trace を自動でターゲット上に描画</li>
-  <li>レビュー: 過去 trace を左の一覧からクリックで再生</li>
-  <li><strong>本家 SCATT 互換指標</strong>: 10a / 10a-0.5 / 10b / 9c / S1 / S2 を主役表示</li>
-  <li><strong>本家にない補助指標</strong>: 振戦/呼吸 FFT、Pre-trigger 安定度、Hold/Aim/Trigger 分解、反動詳細(peak / settle time / 方向)、心拍 / HRV、Approach パターン</li>
-  <li><strong>個人平均との比較</strong>: 過去 shot の μ±σ で z-score を計算、悪い順にソート + 色付け</li>
-  <li><strong>セッション横断レビュー</strong>: Sessions タブで全 session の集計を一覧</li>
-  <li><strong>BLE 心拍連携</strong>: Apple Watch + HeartCast や胸ベルトを Mac で直接受信</li>
-  <li><strong>誤反応 shot の自動検出・削除</strong>: 距離 200mm 以上を異常判定、SCATT 側 DB ごと削除</li>
+  <li>SCATT Expert の <code>trace.data</code> を独自復号、各サンプル <strong>X / Y / 銃の傾き</strong> を取得</li>
+  <li>リアルタイム監視 (SCATT 動作中も並列読み出し)、セッション切替自動追随</li>
+  <li><strong>本家 SCATT 互換指標</strong>: 10a / 10a-0.5 / 10b / 9c / S1 / S2</li>
+  <li><strong>本家にない補助指標</strong>: 周波数 4 帯域(呼吸/心拍由来/力み/全体)、反動詳細、銃の傾き、心拍 / HRV、approach パターン</li>
+  <li><strong>z-score ランキング</strong>: 過去 shot の μ±σ で「今回特にダメな指標」を浮かび上がらせる</li>
+  <li><strong>5 タブ構成</strong>: Dashboard / Sessions / Shots / Help / Settings</li>
+  <li><strong>23 種のグラフ</strong>(自由選択、含 ベスト/ワースト比較、コンディションマップ)</li>
+  <li><strong>BLE 心拍</strong>: Apple Watch + HeartCast / 胸ベルト対応、shot 時データを <code>extra.db</code> に永続化</li>
+  <li><strong>ローカル NLG フィードバック</strong>: ネット不要、shot / session の所見を自動生成</li>
+  <li><strong>誤反応 shot の自動検出・削除</strong>(SCATT 側 DB と同期)</li>
+  <li><strong>CSV / JSON エクスポート</strong>(pandas / Excel / R 用)</li>
 </ul>
 
 <h2 id="files">ファイル構成</h2>
@@ -392,7 +393,7 @@ make ble-scan
 
 <h2 id="roadmap">今後の拡張候補</h2>
 <ul>
-  <li>振戦・呼吸の FFT スペクトログラム(8-12Hz 生理振戦、0.2-0.5Hz 呼吸)</li>
+  <li>手のふるえ・呼吸の FFT スペクトログラム(8-12Hz、0.2-0.5Hz)</li>
   <li>Pre-trigger 1/2/3 秒の安定度推移(R95、SD)</li>
   <li>Hold / Aim / Trigger 自動分解(速度閾値ベース)</li>
   <li>ショット間の重心ドリフト × Cant 解析</li>

@@ -28,6 +28,8 @@ METRIC_DIRECTIONS = {
     "aim_s":            "info",
     "tremor":           "low_good",
     "breath":           "low_good",
+    "heart_band":       "low_good",
+    "total_power":      "low_good",
     "approach_mono":    "high_good",
     "approach_signs":   "low_good",
     "hr_at_fire":       "low_good",
@@ -81,9 +83,13 @@ def _describe_bad(key: str, val: float, z: float) -> Optional[str]:
     if key == "hold_s":
         return f"最終ホールド時間が{sev}短く {val:.2f}s でした。"
     if key == "tremor":
-        return f"振戦帯 (8-12Hz) のパワーが{sev}大きく {val:.4f} でした。"
+        return f"力み (8-12Hz) が{sev}大きく {val:.4f} でした。"
     if key == "breath":
         return f"呼吸帯のパワーが{sev}大きく {val:.3f} (息止め失敗の兆候) でした。"
+    if key == "heart_band":
+        return f"心拍由来のゆれが{sev}大きく {val:.3f} でした。"
+    if key == "total_power":
+        return f"サイト全体のゆれが{sev}大きく {val:.3f} でした。"
     if key == "approach_signs":
         return f"狙い直しの振動が{sev}多く {val:.1f} 回/秒 でした。"
     if key == "approach_mono":
@@ -116,7 +122,7 @@ def _describe_good(key: str, val: float, z: float) -> Optional[str]:
     if key == "cant_sd_deg":
         return f"発射前の cant 変動が普段より小さく ({val:.2f}°)、姿勢が一貫しています。"
     if key == "tremor":
-        return f"振戦が普段より少なく ({val:.4f})、落ち着いた撃発でした。"
+        return f"力み (8-12Hz) が普段より少なく ({val:.4f})、落ち着いた撃発でした。"
     if key == "breath":
         return f"呼吸の影響が少なく ({val:.3f})、息止めが効いています。"
     if key == "recoil_peak":
@@ -137,8 +143,10 @@ def _improvement_tip(key: str) -> Optional[str]:
         "cant_at_fire_deg": "→ ヒント: cant が普段と違う時はグリップやストックの当て方を再確認。",
         "cant_sd_deg":      "→ ヒント: 狙い中の肩の力みや銃の保持を見直し。",
         "hold_s":           "→ ヒント: 最終ホールドが短い。発射判断を 0.3〜0.5 秒遅らせる練習を。",
-        "tremor":           "→ ヒント: 振戦が大きい時は呼吸前のリラックス、脱力を意識。",
+        "tremor":           "→ ヒント: 力みが大きい時は呼吸前のリラックス、脱力を意識。",
         "breath":           "→ ヒント: 呼吸の影響が出ている。完全息止めまたは半呼気の習慣化。",
+        "heart_band":       "→ ヒント: 心拍由来のゆれは避けられないが、撃発タイミングを心拍の合間に置く意識を。",
+        "total_power":      "→ ヒント: サイト全体のゆれが大きい。姿勢の固定、グリップの安定を見直し。",
         "approach_signs":   "→ ヒント: 狙い直しを減らす。最初の狙いで決める意識。",
         "approach_mono":    "→ ヒント: approach をまっすぐ収束させる練習を。",
         "hr_at_fire":       "→ ヒント: HR が高い時はリラックス、呼吸でクールダウン。",

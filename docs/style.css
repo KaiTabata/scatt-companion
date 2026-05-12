@@ -1,0 +1,333 @@
+/* SCATT Prone Analyzer 紹介サイト
+   配色: 本ソフトと同じ白基調 + ターゲット黒 + 弾着のアクセント色 */
+
+:root {
+  --bg: #ffffff;
+  --bg-alt: #f6f8fb;
+  --fg: #1a1c20;
+  --fg-muted: #5c6470;
+  --border: #e0e4ea;
+  --accent: #2d6cdf;
+  --accent-strong: #1f4fb3;
+  --target-black: #14171c;
+  --good: #2d8a47;
+  --warn: #c66e19;
+  --bad: #b53636;
+  --code-bg: #f0f2f6;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN",
+    "Helvetica Neue", sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  background: var(--code-bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+pre {
+  background: var(--code-bg);
+  padding: 14px 18px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 13px;
+}
+
+pre code { background: transparent; padding: 0; }
+
+.container {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* --- Hero --- */
+.hero {
+  background: linear-gradient(180deg, #f8fafd 0%, #ffffff 100%);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 80px;
+}
+
+.nav {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 18px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.nav-logo img { width: 28px; height: 28px; border-radius: 6px; }
+
+.nav-links {
+  display: flex;
+  gap: 22px;
+}
+
+.nav-links a {
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+
+.nav-links a:hover { color: var(--fg); text-decoration: none; }
+
+.hero-inner {
+  max-width: 880px;
+  margin: 60px auto 0;
+  padding: 0 24px;
+  text-align: center;
+}
+
+.hero-icon {
+  width: 110px;
+  height: 110px;
+  border-radius: 24px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.10);
+  margin-bottom: 28px;
+}
+
+.hero h1 {
+  font-size: 44px;
+  line-height: 1.3;
+  margin: 0 0 18px;
+  letter-spacing: -0.5px;
+}
+
+.hero-sub {
+  font-size: 17px;
+  color: var(--fg-muted);
+  margin: 0 0 32px;
+}
+
+.hero-cta {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.btn {
+  display: inline-block;
+  padding: 12px 26px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  transition: transform 0.1s, box-shadow 0.2s;
+}
+.btn:hover { text-decoration: none; transform: translateY(-1px); }
+
+.btn.primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(45, 108, 223, 0.25);
+}
+.btn.primary:hover { background: var(--accent-strong); }
+
+.btn.secondary {
+  background: #fff;
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+.btn.secondary:hover { background: var(--bg-alt); }
+
+.hero-note {
+  color: var(--fg-muted);
+  font-size: 12px;
+  margin-top: 16px;
+}
+
+/* --- Section --- */
+.section {
+  padding: 80px 0;
+}
+.section.bg-alt { background: var(--bg-alt); }
+
+.section h2 {
+  font-size: 30px;
+  margin: 0 0 24px;
+  letter-spacing: -0.3px;
+}
+
+.section h3 {
+  font-size: 19px;
+  margin-top: 28px;
+  margin-bottom: 8px;
+}
+
+.lead {
+  font-size: 17px;
+  color: var(--fg-muted);
+  max-width: 760px;
+  margin-bottom: 18px;
+}
+
+.lead strong { color: var(--fg); }
+
+.screens {
+  margin-top: 30px;
+  display: grid;
+  gap: 24px;
+}
+
+.screens figure {
+  margin: 0;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.screens img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.screens figcaption {
+  padding: 12px 18px;
+  font-size: 13px;
+  color: var(--fg-muted);
+  border-top: 1px solid var(--border);
+}
+
+/* --- 機能カード --- */
+.grid {
+  display: grid;
+  gap: 18px;
+}
+.grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 880px) {
+  .grid-3 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .grid-3 { grid-template-columns: 1fr; }
+}
+
+.card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 22px 24px;
+}
+
+.card h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.card p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.card strong { color: var(--fg); }
+
+/* --- Tab ツアー --- */
+.tabtour {
+  display: grid;
+  gap: 28px;
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 720px) {
+  .tabtour { grid-template-columns: 1fr; }
+}
+
+.tabtour-item {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 22px 24px;
+}
+
+.tabtour-item h3 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+.tabtour-item p {
+  color: var(--fg-muted);
+  font-size: 14px;
+  margin: 0 0 12px;
+}
+
+.tabtour-item img {
+  display: block;
+  max-width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+/* --- FAQ --- */
+details {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 18px;
+  margin-bottom: 10px;
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: 500;
+  outline: none;
+}
+
+details[open] summary {
+  margin-bottom: 8px;
+  color: var(--accent);
+}
+
+details p {
+  margin: 4px 0 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+
+/* --- Footer --- */
+.footer {
+  background: var(--target-black);
+  color: #c0c4ca;
+  padding: 40px 0 50px;
+  margin-top: 40px;
+}
+.footer a { color: #94afff; }
+.footer .small {
+  font-size: 12px;
+  color: #888c93;
+  margin-top: 10px;
+}
+
+/* --- Util --- */
+ul { padding-left: 24px; }
+ol { padding-left: 24px; }
+li { margin: 4px 0; }

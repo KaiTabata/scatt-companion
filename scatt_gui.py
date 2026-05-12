@@ -6,7 +6,7 @@
 
 タブ:
   Dashboard  - 直近 shot の KPI + 速度時系列 (発射 = 0 軸)
-  Spectrum   - FFT スペクトル (振戦・呼吸)
+  Spectrum   - FFT スペクトル (ふるえ・呼吸)
   Shots      - セッション内 shot の KPI 一覧テーブル
   Drift      - shot 間ドリフト & Cant 相関散布図
   Target     - ターゲット + 軌跡 (確認用)
@@ -30,6 +30,7 @@ import numpy as np
 import pyqtgraph as pg
 import collections
 from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal, QRectF, QSettings, QByteArray
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPalette, QPen
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QFrame,
@@ -76,9 +77,9 @@ class S:
         "thresh/z_warn": 0.5,    # 「普段通り」判定を厳しく (0.5σ 以内のみ普通)
         "thresh/z_bad": 1.5,
         # layout
-        "layout/dashboard_mode": "default",  # default | focused (main 2 graphs only)
-        "layout/dashboard_graph_rows": 2,    # 1, 2, 3
-        "layout/dashboard_graph_cols": 2,    # 1, 2, 3
+        "layout/dashboard_mode": "default",
+        "layout/dashboard_graph_rows": 2,
+        "layout/dashboard_graph_cols": 2,
         "layout/graph_default_1": "velocity",
         "layout/graph_default_2": "scatter",
         "layout/graph_default_3": "r95_history",
@@ -88,9 +89,18 @@ class S:
         "layout/graph_default_7": "trace_xy",
         "layout/graph_default_8": "timing_history",
         "layout/graph_default_9": "hold_history",
+        # Dashboard 各セクションの可視性
         "layout/show_shot_list": True,
         "layout/show_hero_cards": True,
+        "layout/show_mini_target": True,
         "layout/show_metrics_table": True,
+        "layout/show_feedback": True,
+        "layout/show_graphs": True,
+        # 主役 KPI 4 枠の内訳 (METRICS の key を指定)
+        "layout/hero_kpi_1": "ten_a_1s",
+        "layout/hero_kpi_2": "ten_a_05s",
+        "layout/hero_kpi_3": "r95_1",
+        "layout/hero_kpi_4": "r95_05",
         # tabs visibility
         "tabs/dashboard": True,
         "tabs/sessions": True,
@@ -447,6 +457,10 @@ def _metric_value(t: dict, key: str) -> float | None:
         return summ.get("tremor_power_pre")
     if key == "breath":
         return summ.get("breathing_power_pre")
+    if key == "heart_band":
+        return summ.get("heart_band_power_pre")
+    if key == "total_power":
+        return summ.get("total_power_pre")
     if key == "approach_mono":
         return (summ.get("approach") or {}).get("monotonic_fraction")
     if key == "approach_signs":
@@ -484,34 +498,36 @@ def _metric_value(t: dict, key: str) -> float | None:
 
 # 指標定義: (key, ラベル, 単位, "low_good"|"high_good"|"abs_low_good"|"info", 表示桁)
 METRICS = [
-    # ----- SCATT 互換 (本家と同じ命名) -----
-    ("ten_a_1s",         "10a (10-ring, 1s)",         "%",    "high_good",    1),
-    ("ten_a_05s",        "10a-0.5 (10-ring, 0.5s)",   "%",    "high_good",    1),
-    ("r95_1",            "S1 (1s stability)",         "mm",   "low_good",     2),
-    ("r95_05",           "S2 (0.5s stability)",       "mm",   "low_good",     2),
+    # ----- SCATT 互換 (本家と同じ表記) -----
+    ("ten_a_1s",         "10a  10点圏 滞在 (1秒)",     "%",    "high_good",    1),
+    ("ten_a_05s",        "10a-0.5  10点圏 滞在 (0.5秒)", "%",  "high_good",    1),
+    ("r95_1",            "S1  安定 (1秒)",             "mm",   "low_good",     2),
+    ("r95_05",           "S2  安定 (0.5秒)",           "mm",   "low_good",     2),
     # ----- 補助指標 -----
-    ("ten_b_1s",         "10b (inner-10, 1s)",        "%",    "high_good",    1),
-    ("ten_b_05s",        "10b-0.5",                   "%",    "high_good",    1),
-    ("nine_c_1s",        "9c (9-ring, 1s)",           "%",    "high_good",    1),
-    ("r95_2",            "R95 last 2s",               "mm",   "low_good",     2),
-    ("r95_3",            "R95 last 3s",               "mm",   "low_good",     2),
-    ("timing_v",         "Trigger timing",            "mm/s", "low_good",     1),
-    ("cant_at_fire_deg", "Cant (at fire)",            "°",    "info",         2),
-    ("cant_sd_deg",      "Cant σ (last 0.5s)",        "°",    "low_good",     3),
-    ("hold_s",           "Hold time (last)",          "s",    "high_good",    2),
-    ("aim_s",            "Aim duration",              "s",    "info",         1),
-    ("tremor",           "Tremor 8–12Hz",             "",     "low_good",     4),
-    ("breath",           "Breath 0.15–0.5Hz",         "",     "low_good",     3),
-    ("approach_mono",    "Approach monotonic",        "",     "high_good",    2),
-    ("approach_signs",   "Approach oscill /s",        "",     "low_good",     1),
-    ("hr_at_fire",       "HR at fire",                "bpm",  "low_good",     0),
-    ("rmssd_30s",        "HRV (RMSSD 30s)",           "ms",   "high_good",    1),
+    ("ten_b_1s",         "10b  10点中央 滞在 (1秒)",   "%",    "high_good",    1),
+    ("ten_b_05s",        "10b-0.5  10点中央 (0.5秒)",  "%",    "high_good",    1),
+    ("nine_c_1s",        "9c  9点圏 滞在 (1秒)",       "%",    "high_good",    1),
+    ("r95_2",            "R95 直前 2秒",                "mm",   "low_good",     2),
+    ("r95_3",            "R95 直前 3秒",                "mm",   "low_good",     2),
+    ("timing_v",         "撃発タイミング (発射時の動き)", "mm/s","low_good",     1),
+    ("cant_at_fire_deg", "銃の傾き (撃発時)",           "°",    "info",         2),
+    ("cant_sd_deg",      "銃傾きの揺れ (0.5秒)",        "°",    "low_good",     3),
+    ("hold_s",           "静止時間 (直前)",              "秒",   "high_good",    2),
+    ("aim_s",            "構え時間",                    "秒",   "info",         1),
+    ("total_power",      "サイト全体のゆれ",             "",     "low_good",     3),
+    ("heart_band",       "心拍由来のゆれ (0.8–2Hz)",     "",     "low_good",     3),
+    ("tremor",           "力み (8–12Hz)",               "",     "low_good",     4),
+    ("breath",           "呼吸 (0.15–0.5Hz)  ※息止め検出","",    "low_good",     3),
+    ("approach_mono",    "狙いの直線度",                 "",     "high_good",    2),
+    ("approach_signs",   "狙い直し /秒",                "",     "low_good",     1),
+    ("hr_at_fire",       "心拍 (撃発時)",               "bpm",  "low_good",     0),
+    ("rmssd_30s",        "心拍変動 HRV (直近30秒)",     "ms",   "high_good",    1),
     # ----- 反動受け -----
-    ("recoil_peak",         "Recoil peak amplitude",     "mm",   "low_good",     1),
-    ("recoil_settle",       "Recoil settle time (<5mm)", "s",    "low_good",     2),
-    ("recoil_post05_r95",   "Follow-through R95 (0.5s)", "mm",   "low_good",     1),
-    ("recoil_dir_std",      "Recoil direction σ",        "°",    "low_good",     0),
-    ("recoil_direction",    "Recoil direction angle",    "°",    "info",         0),
+    ("recoil_peak",         "反動の振幅",                  "mm",   "low_good",     1),
+    ("recoil_settle",       "反動の戻り時間",              "秒",   "low_good",     2),
+    ("recoil_post05_r95",   "フォロースルー安定",          "mm",   "low_good",     1),
+    ("recoil_dir_std",      "反動方向のばらつき",          "°",    "low_good",     0),
+    ("recoil_direction",    "反動方向",                    "°",    "info",         0),
 ]
 
 
@@ -627,35 +643,66 @@ def _hero_card(title: str, unit: str) -> tuple[QWidget, QLabel, QLabel, QLabel]:
 
 # グラフ種別の定義: key -> (label, render_function)
 # render_function は (plot_widget, t_arr, samples, sample_rate, session_shots) を受ける
+def _color_hex(c: QColor) -> str:
+    """pyqtgraph 用に #rrggbb 形式で返す。"""
+    return f"#{c.red():02x}{c.green():02x}{c.blue():02x}"
+
+
+def _setup_plot(pw, title="", x_label="", y_label="", x_unit="", y_unit=""):
+    """全グラフ共通: 配色・グリッド・タイトル を統一。"""
+    pw.setBackground('w')
+    pw.setTitle(title, color=_color_hex(C.FG), size="11pt")
+    pw.setLabel('bottom', x_label, units=x_unit, color=_color_hex(C.FG_MUTED))
+    pw.setLabel('left',   y_label, units=y_unit, color=_color_hex(C.FG_MUTED))
+    pw.showGrid(x=True, y=True, alpha=0.12)
+    pw.getAxis('bottom').setPen(pg.mkPen(C.BORDER_STRONG, width=0.8))
+    pw.getAxis('left').setPen(pg.mkPen(C.BORDER_STRONG, width=0.8))
+    pw.getAxis('bottom').setTextPen(pg.mkPen(C.FG))
+    pw.getAxis('left').setTextPen(pg.mkPen(C.FG))
+
+
+def _empty_message(pw, msg: str):
+    """空データ用メッセージを中央に表示。"""
+    txt = pg.TextItem(msg, color=_color_hex(C.FG_MUTED), anchor=(0.5, 0.5))
+    pw.addItem(txt)
+    vb = pw.getViewBox()
+    vb.setRange(xRange=[-1, 1], yRange=[-1, 1])
+    txt.setPos(0, 0)
+
+
 def _gr_velocity(pw, t_arr, samples, sr, sessshots):
     pw.clear()
-    pw.setLabel('left', 'velocity', units='mm/s')
-    pw.setLabel('bottom', 't', units='s')
-    pw.setTitle("Velocity vs time-from-fire")
-    pw.addLine(x=0, pen=pg.mkPen(C.ACCENT_Y, width=1.5, style=Qt.PenStyle.DashLine))
+    _setup_plot(pw,
+                title="速度時系列  (発射=0 · 緑:狙い · 赤:反動 · 点線:15/60mm/s)",
+                x_label="発射からの時間", x_unit="s",
+                y_label="速度", y_unit="mm/s")
     v = A.velocity(t_arr)
     if len(v) == 0:
+        _empty_message(pw, "データがありません")
         return
     t_axis = (np.arange(len(v)) + 0.5) / sr
     if t_arr.trace_offset is not None:
         t_axis -= t_arr.trace_offset / sr
+    # 発射ライン(0) と閾値線 (15 / 60 mm/s)
+    pw.addLine(x=0, pen=pg.mkPen(C.ACCENT_Y, width=1.5, style=Qt.PenStyle.DashLine))
+    pw.addLine(y=15, pen=pg.mkPen(C.ACCENT_G, width=0.6, style=Qt.PenStyle.DotLine))
+    pw.addLine(y=60, pen=pg.mkPen(C.ACCENT_O, width=0.6, style=Qt.PenStyle.DotLine))
+    # データ (緑=狙い、赤=反動)
     if t_arr.trace_offset is not None and 0 < t_arr.trace_offset < len(v):
         pw.plot(t_axis[:t_arr.trace_offset], v[:t_arr.trace_offset],
-                pen=pg.mkPen(C.ACCENT_G, width=1.5))
+                pen=pg.mkPen(C.ACCENT_G, width=1.8))
         pw.plot(t_axis[t_arr.trace_offset:], v[t_arr.trace_offset:],
-                pen=pg.mkPen(C.ACCENT_R, width=1.2))
+                pen=pg.mkPen(C.ACCENT_R, width=1.4))
     else:
-        pw.plot(t_axis, v, pen=pg.mkPen(C.ACCENT_G, width=1.5))
-    pw.addLine(y=15, pen=pg.mkPen(C.FG_MUTED, width=0.7, style=Qt.PenStyle.DotLine))
+        pw.plot(t_axis, v, pen=pg.mkPen(C.ACCENT_G, width=1.8))
 
 
 def _gr_r95_bars(pw, t_arr, samples, sr, sessshots):
     pw.clear()
-    pw.setLabel('left', 'R95', units='mm')
-    pw.setLabel('bottom', '')
-    pw.setTitle("Recent 5 shots R95 (last 0.5s)")
-    pw.showGrid(x=False, y=True, alpha=0.15)
+    _setup_plot(pw, title="直近 5 発の S2 (最終 0.5秒 R95)",
+                x_label="", y_label="S2", y_unit="mm")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     recent = []
     for s in sessshots[-5:]:
@@ -663,27 +710,41 @@ def _gr_r95_bars(pw, t_arr, samples, sr, sessshots):
         if v_r is not None:
             recent.append(v_r)
     if not recent:
+        _empty_message(pw, "S2 を計算できる shot がありません")
         return
     for i, val in enumerate(recent):
         is_current = (i == len(recent) - 1)
-        col = C.ACCENT_B if is_current else QColor(190, 190, 195)
-        bar = pg.BarGraphItem(
-            x=[i], height=[val], width=0.7,
-            brush=col, pen=pg.mkPen(C.BORDER_STRONG))
+        # 値で色: 低い=緑、中=黒、高い=赤
+        if val < 2:    col = C.ACCENT_G
+        elif val >= 5: col = C.ACCENT_R
+        else:          col = QColor(180, 180, 185)
+        if is_current:
+            # 最新は枠線強調
+            pen = pg.mkPen(C.ACCENT_B, width=2.5)
+        else:
+            pen = pg.mkPen(C.BORDER_STRONG, width=0.8)
+        bar = pg.BarGraphItem(x=[i], height=[val], width=0.7,
+                              brush=col, pen=pen)
         pw.addItem(bar)
-    pw.getAxis('bottom').setTicks([[(i, "now" if i == len(recent) - 1 else f"-{len(recent)-1-i}")
-                                     for i in range(len(recent))]])
+    pw.getAxis('bottom').setTicks([[
+        (i, "今" if i == len(recent) - 1 else f"-{len(recent)-1-i}")
+        for i in range(len(recent))
+    ]])
+    # 2mm/5mm 基準線
+    pw.addLine(y=2, pen=pg.mkPen(C.ACCENT_G, width=0.6, style=Qt.PenStyle.DotLine))
+    pw.addLine(y=5, pen=pg.mkPen(C.ACCENT_R, width=0.6, style=Qt.PenStyle.DotLine))
 
 
 def _gr_shot_scatter(pw, t_arr, samples, sr, sessshots):
     pw.clear()
-    pw.setTitle("Shot impact scatter (mm)")
-    pw.setLabel('left', 'Y', units='mm')
-    pw.setLabel('bottom', 'X', units='mm')
+    _setup_plot(pw, title="発射点 散布図  (古→新 で色変化)",
+                x_label="X", x_unit="mm",
+                y_label="Y", y_unit="mm")
     pw.setAspectLocked(True)
     pw.addLine(x=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
     pw.addLine(y=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     valid = [s for s in sessshots if s.get("fire_x") is not None and s.get("fire_y") is not None]
     if not valid:
@@ -713,13 +774,14 @@ def _gr_shot_scatter(pw, t_arr, samples, sr, sessshots):
 
 def _gr_trace_xy(pw, t_arr, samples, sr, sessshots):
     pw.clear()
-    pw.setTitle("Current trace path (mm)")
-    pw.setLabel('left', 'Y', units='mm')
-    pw.setLabel('bottom', 'X', units='mm')
+    _setup_plot(pw, title="現 trace の軌跡  (緑=狙い · 赤=反動 · 黄=発射点)",
+                x_label="X", x_unit="mm",
+                y_label="Y", y_unit="mm")
     pw.setAspectLocked(True)
     pw.addLine(x=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
     pw.addLine(y=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
     if not samples:
+        _empty_message(pw, "軌跡データがありません")
         return
     # y 反転 (SCATT y↓ → pyqtgraph y↑)
     xs = np.array([s[0] for s in samples])
@@ -738,24 +800,25 @@ def _gr_trace_xy(pw, t_arr, samples, sr, sessshots):
 
 def _gr_cant_time(pw, t_arr, samples, sr, sessshots):
     pw.clear()
-    pw.setTitle("Cant over time (deg)")
-    pw.setLabel('left', 'cant', units='°')
-    pw.setLabel('bottom', 't', units='s')
+    _setup_plot(pw, title="銃の傾き 時系列  (現 trace)",
+                x_label="発射からの時間", x_unit="s",
+                y_label="銃の傾き", y_unit="°")
     pw.addLine(x=0, pen=pg.mkPen(C.ACCENT_Y, width=1.5, style=Qt.PenStyle.DashLine))
     if not samples:
+        _empty_message(pw, "軌跡データがありません")
         return
     cants = np.array([np.degrees(s[2]) for s in samples])
     t_axis = np.arange(len(cants)) / sr
     if t_arr.trace_offset is not None:
         t_axis -= t_arr.trace_offset / sr
-    pw.plot(t_axis, cants, pen=pg.mkPen(C.ACCENT_B, width=1.2))
+    pw.plot(t_axis, cants, pen=pg.mkPen(C.ACCENT_B, width=1.4))
 
 
 def _gr_spectrum(pw, t_arr, samples, sr, sessshots):
     pw.clear()
-    pw.setTitle("FFT spectrum (pre-trigger)")
-    pw.setLabel('left', 'magnitude')
-    pw.setLabel('bottom', 'frequency', units='Hz')
+    _setup_plot(pw, title="FFT スペクトル  (発射前)",
+                x_label="周波数", x_unit="Hz",
+                y_label="強さ")
     pw.setLogMode(False, True)
     pre = t_arr.pre()
     if pre.n < 16:
@@ -772,31 +835,45 @@ def _gr_spectrum(pw, t_arr, samples, sr, sessshots):
 
 def _gr_r95_history(pw, t_arr, samples, sr, sessshots):
     pw.clear()
-    pw.setTitle("R95 (last 0.5 / 1 / 2 s) per shot")
-    pw.setLabel('left', 'R95', units='mm')
-    pw.setLabel('bottom', 'shot order')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="安定度 推移  (S2:0.5s · S1:1s · R95:2s)",
+                x_label="shot 番号 (session 内)",
+                y_label="R95", y_unit="mm")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
-    for win, col, name in [(0.5, C.ACCENT_R, "0.5s"), (1.0, C.ACCENT_O, "1s"), (2.0, C.ACCENT_B, "2s")]:
+    series = [
+        (0.5, C.ACCENT_R, "S2"),
+        (1.0, C.ACCENT_O, "S1"),
+        (2.0, C.ACCENT_B, "R95-2s"),
+    ]
+    n_total = len(sessshots)
+    for win, col, name in series:
         xs, ys = [], []
         for i, s in enumerate(sessshots):
             stab = (s.get("summary") or {}).get("stability") or []
             for st in stab:
                 if st.get("window_s") == win and st.get("r95") is not None:
-                    xs.append(i); ys.append(st["r95"]); break
+                    xs.append(i + 1); ys.append(st["r95"]); break
         if xs:
-            pw.plot(xs, ys, pen=pg.mkPen(col, width=1.5), symbol='o', symbolSize=4,
-                    symbolBrush=col, symbolPen=pg.mkPen(None), name=name)
+            pw.plot(xs, ys, pen=pg.mkPen(col, width=1.5),
+                    symbol='o', symbolSize=4,
+                    symbolBrush=col, symbolPen=pg.mkPen(None))
+            # 最終 shot を強調
+            pw.plot([xs[-1]], [ys[-1]], pen=None, symbol='o',
+                    symbolSize=10, symbolBrush=col,
+                    symbolPen=pg.mkPen(C.FG, width=1.5))
+    # 凡例はタイトルに含めて、画面外/重なりのバグを回避
+    pw.setTitle("安定度 推移  (赤:S2  橙:S1  青:R95-2s · shot 順)",
+                color=_color_hex(C.FG), size="11pt")
 
 
 def _gr_cant_history(pw, t_arr, samples, sr, sessshots):
     pw.clear()
-    pw.setTitle("Cant at fire per shot (deg)")
-    pw.setLabel('left', 'cant', units='°')
-    pw.setLabel('bottom', 'shot order')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="発射時 銃の傾き 推移  (shot 順)",
+                x_label="shot 番号 (session 内)",
+                y_label="銃の傾き", y_unit="°")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     xs, ys = [], []
     for i, s in enumerate(sessshots):
@@ -809,11 +886,11 @@ def _gr_cant_history(pw, t_arr, samples, sr, sessshots):
 
 def _gr_timing_history(pw, t_arr, samples, sr, sessshots):
     pw.clear()
-    pw.setTitle("Trigger timing velocity per shot (mm/s)")
-    pw.setLabel('left', 'velocity', units='mm/s')
-    pw.setLabel('bottom', 'shot order')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="撃発タイミング 推移  (shot 順)",
+                x_label="shot 番号 (session 内)",
+                y_label="撃発タイミング", y_unit="mm/s")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     xs, ys = [], []
     for i, s in enumerate(sessshots):
@@ -826,11 +903,11 @@ def _gr_timing_history(pw, t_arr, samples, sr, sessshots):
 
 def _gr_hold_history(pw, t_arr, samples, sr, sessshots):
     pw.clear()
-    pw.setTitle("Hold time per shot (s)")
-    pw.setLabel('left', 'hold time', units='s')
-    pw.setLabel('bottom', 'shot order')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="静止時間 推移  (shot 順)",
+                x_label="shot 番号 (session 内)",
+                y_label="静止時間", y_unit="s")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     xs, ys = [], []
     for i, s in enumerate(sessshots):
@@ -845,10 +922,9 @@ def _gr_hold_history(pw, t_arr, samples, sr, sessshots):
 def _gr_hr_time(pw, t_arr, samples, sr, sessshots):
     """直近の心拍時系列。"""
     pw.clear()
-    pw.setTitle("Heart rate over time (bpm)")
-    pw.setLabel('left', 'bpm')
-    pw.setLabel('bottom', 't', units='s')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="心拍 時系列",
+                x_label="経過時間", x_unit="s",
+                y_label="心拍", y_unit="bpm")
     win = QApplication.activeWindow()
     if win is None or not hasattr(win, "hr_history") or not win.hr_history:
         return
@@ -862,13 +938,13 @@ def _gr_hr_time(pw, t_arr, samples, sr, sessshots):
 
 
 def _gr_hr_vs_r95(pw, t_arr, samples, sr, sessshots):
-    """shot ごとの HR vs R95 last 0.5s 散布図。心拍が高いと安定度が落ちる仮説の検証。"""
+    """shot ごとの 心拍 vs S2 (R95 0.5s) 散布図。"""
     pw.clear()
-    pw.setTitle("HR vs R95 last 0.5s")
-    pw.setLabel('left', 'R95 last 0.5s', units='mm')
-    pw.setLabel('bottom', 'HR at fire', units='bpm')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="心拍 vs S2 (0.5s)",
+                x_label="発射時の心拍", x_unit="bpm",
+                y_label="S2 (最終 0.5秒 R95)", y_unit="mm")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     xs, ys = [], []
     for s in sessshots:
@@ -877,28 +953,27 @@ def _gr_hr_vs_r95(pw, t_arr, samples, sr, sessshots):
         if hr is not None and r95 is not None:
             xs.append(hr); ys.append(r95)
     if not xs:
-        pw.setTitle("HR vs R95 last 0.5s  (心拍観測 shot がまだ無い)")
+        pw.setTitle("心拍 vs S2  (心拍観測の shot がまだありません)")
         return
     pw.plot(xs, ys, pen=None, symbol='o', symbolSize=7,
             symbolBrush=C.ACCENT_R, symbolPen=pg.mkPen(C.FG, width=0.5))
-    # 回帰線
     if len(xs) >= 3:
         a, b = np.polyfit(xs, ys, 1)
         x_line = np.array([min(xs), max(xs)])
         pw.plot(x_line, a * x_line + b, pen=pg.mkPen(C.ACCENT_O, width=1.5,
                                                        style=Qt.PenStyle.DashLine))
         corr = float(np.corrcoef(xs, ys)[0, 1])
-        pw.setTitle(f"HR vs R95 last 0.5s  (r = {corr:+.2f}, n={len(xs)})")
+        pw.setTitle(f"心拍 vs S2  (相関 r = {corr:+.2f}, n={len(xs)})")
 
 
 def _gr_rmssd_vs_r95(pw, t_arr, samples, sr, sessshots):
-    """RMSSD vs R95。HRV が高い (リラックス) ほど安定するかの検証。"""
+    """HRV (RMSSD) vs S2 散布図。HRV が高い (リラックス) ほど安定するかの検証。"""
     pw.clear()
-    pw.setTitle("RMSSD vs R95 last 0.5s")
-    pw.setLabel('left', 'R95 last 0.5s', units='mm')
-    pw.setLabel('bottom', 'RMSSD', units='ms')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="HRV vs S2 (0.5s)",
+                x_label="HRV (RMSSD)", x_unit="ms",
+                y_label="S2", y_unit="mm")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     xs, ys = [], []
     for s in sessshots:
@@ -907,7 +982,7 @@ def _gr_rmssd_vs_r95(pw, t_arr, samples, sr, sessshots):
         if rmssd is not None and r95 is not None:
             xs.append(rmssd); ys.append(r95)
     if not xs:
-        pw.setTitle("RMSSD vs R95  (RMSSD 観測 shot がまだ無い)")
+        pw.setTitle("HRV vs S2  (HRV 観測の shot がまだありません)")
         return
     pw.plot(xs, ys, pen=None, symbol='o', symbolSize=7,
             symbolBrush=C.ACCENT_P, symbolPen=pg.mkPen(C.FG, width=0.5))
@@ -917,19 +992,15 @@ def _gr_rmssd_vs_r95(pw, t_arr, samples, sr, sessshots):
         pw.plot(x_line, a * x_line + b, pen=pg.mkPen(C.ACCENT_O, width=1.5,
                                                        style=Qt.PenStyle.DashLine))
         corr = float(np.corrcoef(xs, ys)[0, 1])
-        pw.setTitle(f"RMSSD vs R95  (r = {corr:+.2f}, n={len(xs)})")
+        pw.setTitle(f"HRV vs S2  (相関 r = {corr:+.2f}, n={len(xs)})")
 
 
 def _gr_session_overview(pw, t_arr, samples, sr, sessshots):
-    """セッション全体の俯瞰: shot 順 × (R95 last 0.5s, HR) を 2 軸で。
-
-    本家 SCATT にない「練習の流れ」の可視化。
-    """
+    """セッション全体の俯瞰: shot 順 × (S2, 心拍) を 2 軸で。"""
     pw.clear()
-    pw.setTitle("Session overview: R95 + HR over shots")
-    pw.setLabel('left', 'R95 0.5s', units='mm')
-    pw.setLabel('bottom', 'shot order')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="セッション概観  S2 + 心拍 (shot 順)",
+                x_label="shot 番号 (session 内)",
+                y_label="S2", y_unit="mm")
     if not sessshots:
         return
     xs = list(range(len(sessshots)))
@@ -950,7 +1021,7 @@ def _gr_session_overview(pw, t_arr, samples, sr, sessshots):
     pw.getAxis('right').linkToView(vb2)
     vb2.setXLink(pw.getViewBox())
     pw.showAxis('right')
-    pw.getAxis('right').setLabel('HR', units='bpm', color=hex_of(C.ACCENT_B))
+    pw.getAxis('right').setLabel('心拍', units='bpm', color=_color_hex(C.ACCENT_B))
     if any(not np.isnan(h) for h in hrs):
         from pyqtgraph import PlotDataItem
         item = PlotDataItem(xs, hrs, pen=pg.mkPen(C.ACCENT_B, width=1.5),
@@ -967,14 +1038,14 @@ def _gr_session_overview(pw, t_arr, samples, sr, sessshots):
 def _gr_recoil_xy_overlay(pw, t_arr, samples, sr, sessshots):
     """セッション内全 shot の発射後 trace を、発射点を原点として重ね描き。"""
     pw.clear()
-    pw.setTitle("Recoil trajectory overlay (post-shot, origin = fire point)")
-    pw.setLabel('left', 'Y', units='mm')
-    pw.setLabel('bottom', 'X', units='mm')
+    _setup_plot(pw, title="反動軌跡 オーバーレイ  (直近 30 shot、発射点 = 原点)",
+                x_label="X", x_unit="mm",
+                y_label="Y", y_unit="mm")
     pw.setAspectLocked(True)
-    pw.showGrid(x=True, y=True, alpha=0.15)
     pw.addLine(x=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
     pw.addLine(y=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     n = len(sessshots)
     # 各 shot の発射後 trace を読み込んで描画 (重い処理になるので最大 N 件に制限)
@@ -1018,45 +1089,56 @@ def _gr_recoil_xy_overlay(pw, t_arr, samples, sr, sessshots):
             pen=pg.mkPen(C.FG_MUTED, width=0.8, style=Qt.PenStyle.DashLine))
 
 
-def _gr_recoil_direction_hist(pw, t_arr, samples, sr, sessshots):
-    """反動方向のヒストグラム (極座標風)。"""
+def _gr_recoil_direction_vs_amp(pw, t_arr, samples, sr, sessshots):
+    """反動の方向 × 振幅 散布図。「同じ方向 = 持ち方一貫」「ばらつき = 持ち方不安定」を可視化。"""
     pw.clear()
-    pw.setTitle("Recoil direction distribution (impulse 50ms angle)")
-    pw.setLabel('left', 'count')
-    pw.setLabel('bottom', 'direction', units='°')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="反動方向 × 振幅  (持ち方の一貫性を見る)",
+                x_label="反動方向", x_unit="°",
+                y_label="反動の振幅", y_unit="mm")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
-    angles = []
-    for s in sessshots:
+    # 散布図: x = 方向°, y = 振幅mm, 色 = shot 順
+    pts = []
+    for i, s in enumerate(sessshots):
         r = (s.get("summary") or {}).get("recoil") or {}
-        if r.get("direction_deg") is not None and r.get("impulse_mm", 0) > 0.5:
-            angles.append(r["direction_deg"])
-    if not angles:
+        d = r.get("direction_deg")
+        a = r.get("peak_r_mm")
+        if d is not None and a is not None and r.get("impulse_mm", 0) > 0.5:
+            pts.append((i, d, a))
+    if not pts:
+        _empty_message(pw, "反動データがありません")
         return
-    bins = np.linspace(-180, 180, 25)
-    hist, edges = np.histogram(angles, bins=bins)
-    centers = (edges[:-1] + edges[1:]) / 2
-    bar = pg.BarGraphItem(x=centers, height=hist, width=14,
-                          brush=C.ACCENT_R, pen=pg.mkPen(C.BORDER_STRONG))
-    pw.addItem(bar)
-    # 平均方向と σ をテキスト表示用に title に
-    mean_x = float(np.mean(np.cos(np.radians(angles))))
-    mean_y = float(np.mean(np.sin(np.radians(angles))))
-    mean_dir = float(np.degrees(np.arctan2(mean_y, mean_x)))
-    R = np.hypot(mean_x, mean_y)
-    circ_std_deg = float(np.degrees(np.sqrt(-2 * np.log(max(R, 1e-6)))))
-    pw.setTitle(f"Recoil direction  mean={mean_dir:+.0f}°  σ={circ_std_deg:.0f}°  n={len(angles)}")
+    n_pts = len(pts)
+    for i, d, a in pts:
+        f = i / max(1, n_pts - 1)
+        col = (int(60 + f * 180), int(150 - f * 100), int(220 - f * 180))
+        is_current = (i == n_pts - 1)
+        pw.plot([d], [a], pen=None, symbol='o',
+                symbolSize=11 if is_current else 7,
+                symbolBrush=col, symbolPen=pg.mkPen(C.FG, width=0.8))
+    # 平均方向の縦線
+    rads = [np.radians(d) for _, d, _ in pts]
+    mx = float(np.mean(np.cos(rads)))
+    my = float(np.mean(np.sin(rads)))
+    mean_dir = float(np.degrees(np.arctan2(my, mx)))
+    R = np.hypot(mx, my)
+    circ_sd = float(np.degrees(np.sqrt(-2 * np.log(max(R, 1e-6)))))
+    pw.addLine(x=mean_dir, pen=pg.mkPen(C.ACCENT_Y, width=1, style=Qt.PenStyle.DashLine))
+    pw.setTitle(
+        f"反動方向 × 振幅  平均方向={mean_dir:+.0f}° · 方向σ={circ_sd:.0f}° · n={n_pts}  "
+        "(古→新で色変化、最新=大)"
+    )
 
 
 def _gr_recoil_peak_history(pw, t_arr, samples, sr, sessshots):
-    """shot 順での反動 peak amplitude の推移。低いほど良い。"""
+    """shot 順での反動振幅の推移。低いほど良い。"""
     pw.clear()
-    pw.setTitle("Recoil peak amplitude per shot (mm)")
-    pw.setLabel('left', 'peak amplitude', units='mm')
-    pw.setLabel('bottom', 'shot order')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="反動の振幅 推移  (shot 順)",
+                x_label="shot 番号 (session 内)",
+                y_label="反動振幅", y_unit="mm")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     xs, ys = [], []
     for i, s in enumerate(sessshots):
@@ -1073,11 +1155,11 @@ def _gr_recoil_peak_history(pw, t_arr, samples, sr, sessshots):
 def _gr_recoil_speed_overlay(pw, t_arr, samples, sr, sessshots):
     """現在 trace の発射後速度時系列。"""
     pw.clear()
-    pw.setTitle("Post-shot velocity (current trace)")
-    pw.setLabel('left', 'velocity', units='mm/s')
-    pw.setLabel('bottom', 't from fire', units='s')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="発射後速度  (現 trace)",
+                x_label="発射からの時間", x_unit="s",
+                y_label="速度", y_unit="mm/s")
     if t_arr.trace_offset is None or t_arr.trace_offset >= t_arr.n - 2:
+        _empty_message(pw, "発射後データがありません")
         return
     post = t_arr.post()
     v = A.velocity(post)
@@ -1090,11 +1172,11 @@ def _gr_recoil_speed_overlay(pw, t_arr, samples, sr, sessshots):
 def _gr_recoil_settle_history(pw, t_arr, samples, sr, sessshots):
     """shot 順での「反動戻り時間」推移。短いほど良い。"""
     pw.clear()
-    pw.setTitle("Recoil settle time per shot (< 5mm)")
-    pw.setLabel('left', 'settle time', units='s')
-    pw.setLabel('bottom', 'shot order')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="反動の戻り時間 推移  (5mm 以内に戻る)",
+                x_label="shot 番号 (session 内)",
+                y_label="戻り時間", y_unit="s")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     xs, ys = [], []
     for i, s in enumerate(sessshots):
@@ -1109,13 +1191,13 @@ def _gr_recoil_settle_history(pw, t_arr, samples, sr, sessshots):
 
 
 def _gr_combined_timing_r95(pw, t_arr, samples, sr, sessshots):
-    """撃発タイミングと R95 last 0.5s の散布図。「速いタイミングで撃つほど外す」傾向の検出。"""
+    """撃発タイミングと S2 の散布図。"""
     pw.clear()
-    pw.setTitle("Trigger timing vs R95 last 0.5s")
-    pw.setLabel('left', 'R95 last 0.5s', units='mm')
-    pw.setLabel('bottom', 'trigger timing velocity', units='mm/s')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="撃発タイミング vs S2  (相関)",
+                x_label="撃発タイミング", x_unit="mm/s",
+                y_label="S2", y_unit="mm")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     xs, ys = [], []
     for s in sessshots:
@@ -1133,30 +1215,30 @@ def _gr_combined_timing_r95(pw, t_arr, samples, sr, sessshots):
         pw.plot(x_line, a * x_line + b, pen=pg.mkPen(C.ACCENT_O, width=1.5,
                                                        style=Qt.PenStyle.DashLine))
         corr = float(np.corrcoef(xs, ys)[0, 1])
-        pw.setTitle(f"Trigger timing vs R95 0.5s  (r = {corr:+.2f}, n={len(xs)})")
+        pw.setTitle(f"撃発タイミング vs S2  (相関 r = {corr:+.2f}, n={len(xs)})")
 
 
 GRAPH_KINDS = [
-    ("velocity",       "Velocity (time-from-fire)",     _gr_velocity),
-    ("r95_bars",       "Recent 5 shots R95 bars",       _gr_r95_bars),
-    ("scatter",        "Shot impact scatter",           _gr_shot_scatter),
-    ("trace_xy",       "Current trace X-Y path",        _gr_trace_xy),
-    ("cant_time",      "Cant over time (current)",      _gr_cant_time),
-    ("spectrum",       "FFT spectrum (pre-trigger)",    _gr_spectrum),
-    ("r95_history",    "R95 history per shot",          _gr_r95_history),
-    ("cant_history",   "Cant at fire per shot",         _gr_cant_history),
-    ("timing_history", "Trigger timing per shot",       _gr_timing_history),
-    ("hold_history",   "Hold time per shot",            _gr_hold_history),
-    ("hr_time",        "Heart rate over time",          _gr_hr_time),
-    ("hr_vs_r95",      "HR vs R95 (correlation)",       _gr_hr_vs_r95),
-    ("rmssd_vs_r95",   "RMSSD vs R95 (HRV correlation)", _gr_rmssd_vs_r95),
-    ("session_overview", "Session overview (R95 + HR)", _gr_session_overview),
-    ("timing_vs_r95",  "Trigger timing vs R95",         _gr_combined_timing_r95),
-    ("recoil_xy",         "Recoil trajectories overlay",   _gr_recoil_xy_overlay),
-    ("recoil_dir_hist",   "Recoil direction histogram",    _gr_recoil_direction_hist),
-    ("recoil_settle",     "Recoil settle time per shot",   _gr_recoil_settle_history),
-    ("recoil_peak_hist",  "Recoil peak amplitude per shot", _gr_recoil_peak_history),
-    ("recoil_speed",      "Post-shot velocity (current)",  _gr_recoil_speed_overlay),
+    ("velocity",         "速度時系列  (発射 = 0)",          _gr_velocity),
+    ("r95_bars",         "直近 5 発の S2 棒グラフ",         _gr_r95_bars),
+    ("scatter",          "発射点 散布図",                   _gr_shot_scatter),
+    ("trace_xy",         "現 trace の軌跡 (X-Y)",           _gr_trace_xy),
+    ("cant_time",        "銃の傾き 時系列  (現 trace)",     _gr_cant_time),
+    ("spectrum",         "FFT スペクトル  (発射前)",        _gr_spectrum),
+    ("r95_history",      "安定度 推移  (S2/S1/R95-2s)",      _gr_r95_history),
+    ("cant_history",     "発射時 銃の傾き 推移  (shot 順)",  _gr_cant_history),
+    ("timing_history",   "撃発タイミング 推移  (shot 順)",   _gr_timing_history),
+    ("hold_history",     "静止時間 推移  (shot 順)",         _gr_hold_history),
+    ("hr_time",          "心拍 時系列",                       _gr_hr_time),
+    ("hr_vs_r95",        "心拍 vs S2  (相関)",               _gr_hr_vs_r95),
+    ("rmssd_vs_r95",     "HRV vs S2  (相関)",                _gr_rmssd_vs_r95),
+    ("session_overview", "セッション概観  (S2 + 心拍)",      _gr_session_overview),
+    ("timing_vs_r95",    "撃発タイミング vs S2  (相関)",     _gr_combined_timing_r95),
+    ("recoil_xy",        "反動軌跡 オーバーレイ",             _gr_recoil_xy_overlay),
+    ("recoil_dir_amp",   "反動方向 × 振幅  (持ち方一貫性)",   _gr_recoil_direction_vs_amp),
+    ("recoil_settle",    "反動の戻り時間 推移  (shot 順)",   _gr_recoil_settle_history),
+    ("recoil_peak_hist", "反動の振幅 推移  (shot 順)",       _gr_recoil_peak_history),
+    ("recoil_speed",     "発射後速度  (現 trace)",            _gr_recoil_speed_overlay),
 ]
 
 
@@ -1237,16 +1319,19 @@ class DashboardTab(QWidget):
         outer.setContentsMargins(10, 10, 10, 10)
         outer.setSpacing(8)
 
-        # ----- 上段: 主役 4 枚 (本家 SCATT 互換: 10a / 10a-0.5 / S1 / S2) -----
-        hero_row = QHBoxLayout()
-        hero_row.setSpacing(8)
-        self.hero_10a = _hero_card("10a   10-ring time (last 1s)", "%")
-        self.hero_10a5 = _hero_card("10a-0.5   10-ring time (last 0.5s)", "%")
-        self.hero_s1 = _hero_card("S1   stability (last 1s)", "mm")
-        self.hero_s2 = _hero_card("S2   stability (last 0.5s)", "mm")
-        for hero in [self.hero_10a, self.hero_10a5, self.hero_s1, self.hero_s2]:
-            hero_row.addWidget(hero[0], stretch=1)
-        outer.addLayout(hero_row)
+        # ----- 上段: 主役 4 枚 + ミニターゲット -----
+        # 主役 4 枠は SETTINGS から動的に生成 (再構築可能)
+        self._hero_row_widget = QWidget()
+        self.hero_cards: list = []  # [(widget, val_lbl, unit_lbl, sub_lbl, key), ...]
+        # ミニターゲット
+        self.mini_target = TargetTab()
+        self.mini_target.setFixedSize(220, 220)
+        # hero_row の中身は _rebuild_hero_row() で構築
+        self._hero_row_layout = QHBoxLayout(self._hero_row_widget)
+        self._hero_row_layout.setSpacing(8)
+        self._hero_row_layout.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(self._hero_row_widget)
+        self._rebuild_hero_row()
 
         # ----- 中段: 全指標表 (label, value, μ, σ, z) -----
         n_metrics = len(METRICS)
@@ -1304,12 +1389,15 @@ class DashboardTab(QWidget):
         rows = SETTINGS.get("layout/dashboard_graph_rows")
         cols = SETTINGS.get("layout/dashboard_graph_cols")
         self.rebuild_graphs(rows, cols)
-        # hero_cards / metrics_table 可視性
-        if not SETTINGS.get("layout/show_hero_cards"):
-            for hero in [self.hero_10a, self.hero_10a5, self.hero_s1, self.hero_s2]:
-                hero[0].hide()
+        # 可視性
+        self._hero_row_widget.setVisible(SETTINGS.get("layout/show_hero_cards"))
+        self.mini_target.setVisible(SETTINGS.get("layout/show_mini_target"))
         if not SETTINGS.get("layout/show_metrics_table"):
             self.metrics_table.hide()
+        if not SETTINGS.get("layout/show_feedback"):
+            self.feedback_label.hide()
+        if not SETTINGS.get("layout/show_graphs"):
+            self._graphs_widget.hide()
 
     def _set_hero(self, hero, value_text: str, sub_text: str, color: QColor):
         hero[1].setText(value_text)
@@ -1334,6 +1422,45 @@ class DashboardTab(QWidget):
             mu, sigma = stat
             sub = f"過去平均: {mu:.{digits}f} ± {sigma:.{digits}f}"
         self._set_hero(hero, f"{v:.{digits}f}", sub, col)
+
+    def _rebuild_hero_row(self):
+        """主役 KPI 4 枠 + ミニターゲットを SETTINGS から再構築。"""
+        # 既存 widget を削除
+        for it in self.hero_cards:
+            it[0].setParent(None); it[0].deleteLater()
+        self.hero_cards = []
+        # mini_target を一旦 layout から外す
+        self._hero_row_layout.removeWidget(self.mini_target)
+        # 主役 4 枠を 2×2 グリッドで
+        kpi_grid = QGridLayout()
+        kpi_grid.setHorizontalSpacing(6); kpi_grid.setVerticalSpacing(6)
+        kpi_keys = [SETTINGS.get(f"layout/hero_kpi_{i}") for i in range(1, 5)]
+        for i, key in enumerate(kpi_keys):
+            metric = next((m for m in METRICS if m[0] == key), None)
+            if metric is None:
+                continue
+            _, label, unit, _, _ = metric
+            card = _hero_card(label, unit)
+            kpi_grid.addWidget(card[0], i // 2, i % 2)
+            self.hero_cards.append(card + (key,))  # 5要素タプル
+        # 既存 layout をクリア
+        while self._hero_row_layout.count():
+            item = self._hero_row_layout.takeAt(0)
+            w = item.widget()
+            lay = item.layout()
+            if w:
+                w.setParent(None)
+            elif lay:
+                # 内部の widget を全部 takeAt
+                while lay.count():
+                    sub = lay.takeAt(0)
+                    if sub.widget():
+                        sub.widget().setParent(None)
+        # 再追加
+        self._hero_row_layout.addLayout(kpi_grid, stretch=3)
+        self._hero_row_layout.addWidget(self.mini_target, stretch=0)
+        # 可視性
+        self.mini_target.setVisible(SETTINGS.get("layout/show_mini_target"))
 
     def rebuild_graphs(self, rows: int, cols: int):
         """グラフ枠数を変更して再構築。"""
@@ -1395,11 +1522,15 @@ class DashboardTab(QWidget):
         # 側で除いて渡すか、ここで shot_id 一致のものを外す。簡略のため引数前提)
         stats = compute_session_stats(session_shots or [])
 
-        # --- 主役 4 枚 (本家 SCATT 互換) ---
-        self._set_hero_by_key(self.hero_10a,  cur, stats, "ten_a_1s",  1)
-        self._set_hero_by_key(self.hero_10a5, cur, stats, "ten_a_05s", 1)
-        self._set_hero_by_key(self.hero_s1,   cur, stats, "r95_1",     2)
-        self._set_hero_by_key(self.hero_s2,   cur, stats, "r95_05",    2)
+        # --- 主役 4 枚 (SETTINGS で選択された指標) ---
+        for card in self.hero_cards:
+            w, val_lbl, unit_lbl, sub_lbl, key = card
+            metric = next((m for m in METRICS if m[0] == key), None)
+            if metric is None:
+                continue
+            _, _, _, _, digits = metric
+            # _set_hero_by_key 互換のタプル (widget, val, unit, sub)
+            self._set_hero_by_key((w, val_lbl, unit_lbl, sub_lbl), cur, stats, key, digits)
 
         # --- 中段 指標表 ---
         # 「全部赤」を避けるため、まず全指標の z-score を一括計算し、
@@ -1537,8 +1668,10 @@ class SpectrumTab(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(10, 10, 10, 10)
         info = QLabel(
-            "Pre-trigger spectrum (X / Y). Yellow band = breath (0.15–0.5Hz), "
-            "Red band = physiological tremor (8–12Hz)."
+            "発射前のサイト座標 (X / Y) の周波数スペクトル。"
+            "青帯 = 呼吸 (0.15-0.5Hz、息止め失敗で大きく)、"
+            "緑帯 = 心拍由来 (0.8-2Hz、伏射で支配的)、"
+            "赤帯 = 力み (8-12Hz、生理的振戦)。"
         )
         info.setStyleSheet(f"color: {hex_of(C.FG_MUTED)}; font-size: 11px;")
         lay.addWidget(info)
@@ -1571,19 +1704,28 @@ class SpectrumTab(QWidget):
         self.plot.clear()
         self.plot.plot(freq, mag_x, pen=pg.mkPen(C.ACCENT_B, width=1.5))
         self.plot.plot(freq, mag_y, pen=pg.mkPen(C.ACCENT_P, width=1.5))
-        for lo, hi, col in [(0.15, 0.5, C.ACCENT_Y), (8.0, 12.0, C.ACCENT_R)]:
+        # 帯域ハイライト: 呼吸 (青)、心拍由来 (緑)、力み (赤)
+        for lo, hi, col in [
+            (0.15, 0.5, C.ACCENT_B),  # 呼吸
+            (0.8, 2.0, C.ACCENT_G),   # 心拍由来
+            (8.0, 12.0, C.ACCENT_R),  # 力み
+        ]:
             self.plot.addItem(pg.LinearRegionItem(
                 values=(lo, hi),
-                brush=pg.mkBrush(col.red(), col.green(), col.blue(), 50),
+                brush=pg.mkBrush(col.red(), col.green(), col.blue(), 45),
                 movable=False, pen=pg.mkPen(None),
             ))
         tremor = A.tremor_band(freq, mag_x)
         breath = A.breathing_band(freq, mag_x)
+        heart = A.heart_band(freq, mag_x)
+        total = A.total_power(freq, mag_x)
         peak_idx = int(np.argmax(mag_x))
         self.summary.setText(
-            f"tremor 8–12Hz: {tremor:.4f}    "
-            f"breath 0.15–0.5Hz: {breath:.4f}    "
-            f"peak: {freq[peak_idx]:.2f}Hz @ {mag_x[peak_idx]:.3f}    "
+            f"呼吸 0.15-0.5Hz: {breath:.4f}    "
+            f"心拍由来 0.8-2Hz: {heart:.4f}    "
+            f"力み 8-12Hz: {tremor:.4f}    "
+            f"全体: {total:.4f}    "
+            f"ピーク: {freq[peak_idx]:.2f}Hz @ {mag_x[peak_idx]:.3f}    "
             f"(blue = X axis,  purple = Y axis)"
         )
 
@@ -2361,14 +2503,125 @@ class DriftTab(QWidget):
 # Tab 5: Target (legacy)
 # ===========================================================================
 
-def _gr_cant_histogram(pw, t_arr, samples, sr, sessshots):
-    """session 内 shot 発射時 Cant のヒストグラム。"""
+def _gr_best_vs_worst(pw, t_arr, samples, sr, sessshots):
+    """セッション内 S2 ベスト 5 vs ワースト 5 の主要指標比較棒グラフ。
+
+    「良い時と悪い時で何が違うか」が一目で分かる。
+    """
     pw.clear()
-    pw.setTitle("Cant at fire — distribution (°)")
-    pw.setLabel('left', 'count')
-    pw.setLabel('bottom', 'cant', units='°')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="ベスト 5 vs ワースト 5  (S2 で判定)",
+                x_label="",
+                y_label="値")
+    if not sessshots or len(sessshots) < 6:
+        _empty_message(pw, "比較には最低 6 shot 必要")
+        return
+    # S2 で並べる
+    scored = []
+    for s in sessshots:
+        s2 = None
+        for st in (s.get("summary") or {}).get("stability") or []:
+            if st.get("window_s") == 0.5:
+                s2 = st["r95"]; break
+        if s2 is not None:
+            scored.append((s2, s))
+    scored.sort(key=lambda x: x[0])
+    if len(scored) < 6:
+        _empty_message(pw, "S2 計算できる shot が不足")
+        return
+    n_each = min(5, len(scored) // 2)
+    best = scored[:n_each]
+    worst = scored[-n_each:]
+
+    def avg(group, fn):
+        vals = [fn(s) for _, s in group if fn(s) is not None]
+        return float(np.mean(vals)) if vals else None
+    def s2_v(s):
+        for st in (s.get("summary") or {}).get("stability") or []:
+            if st.get("window_s") == 0.5: return st["r95"]
+    def s1_v(s):
+        for st in (s.get("summary") or {}).get("stability") or []:
+            if st.get("window_s") == 1.0: return st["r95"]
+    def cant_v(s):
+        return np.degrees(s["fire_cant"]) if s.get("fire_cant") is not None else None
+    def timing_v(s):
+        return s.get("timing_v")
+    def hold_v(s):
+        return ((s.get("summary") or {}).get("hold") or {}).get("hold_s")
+
+    metrics = [
+        ("S2", s2_v, 1),
+        ("S1", s1_v, 1),
+        ("|Cant|", lambda s: abs(cant_v(s)) if cant_v(s) is not None else None, 1),
+        ("撃発タイミング", timing_v, 0.3),
+        ("静止時間×10", lambda s: (hold_v(s) or 0) * 10, 1),
+    ]
+    for i, (name, fn, _scale) in enumerate(metrics):
+        b = avg(best, fn)
+        w = avg(worst, fn)
+        if b is None or w is None:
+            continue
+        # ベスト = 緑、ワースト = 赤
+        pw.plot([i * 3], [b], pen=None, symbol='o', symbolSize=14,
+                symbolBrush=C.ACCENT_G, symbolPen=pg.mkPen(C.FG, width=1))
+        pw.plot([i * 3 + 1], [w], pen=None, symbol='o', symbolSize=14,
+                symbolBrush=C.ACCENT_R, symbolPen=pg.mkPen(C.FG, width=1))
+        # 差を線で
+        pw.plot([i * 3, i * 3 + 1], [b, w],
+                pen=pg.mkPen(C.FG_MUTED, width=1, style=Qt.PenStyle.DotLine))
+    # X 軸ティックを指標名に
+    ticks = [(i * 3 + 0.5, m[0]) for i, m in enumerate(metrics)]
+    pw.getAxis('bottom').setTicks([ticks])
+    pw.setTitle(
+        f"ベスト 5 vs ワースト 5  (緑=ベスト · 赤=ワースト · 静止時間は×10で表示)"
+    )
+
+
+def _gr_condition_map(pw, t_arr, samples, sr, sessshots):
+    """コンディションマップ: 心拍 × HRV × S2 (色=S2、サイズ=shot 順)。
+    緊張・リラックスの状態と結果の関係が一目で分かる。
+    """
+    pw.clear()
+    _setup_plot(pw, title="コンディションマップ  (心拍 × HRV × S2)",
+                x_label="発射時 心拍", x_unit="bpm",
+                y_label="HRV (RMSSD)", y_unit="ms")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
+        return
+    pts = []
+    for i, s in enumerate(sessshots):
+        hr = s.get("hr_at_fire")
+        rmssd = s.get("rmssd_30s")
+        s2 = None
+        for st in (s.get("summary") or {}).get("stability") or []:
+            if st.get("window_s") == 0.5: s2 = st["r95"]; break
+        if hr is not None and rmssd is not None and s2 is not None:
+            pts.append((i, hr, rmssd, s2))
+    if not pts:
+        _empty_message(pw, "心拍 + HRV 観測の shot がまだありません")
+        return
+    n = len(pts)
+    for i, hr, rmssd, s2 in pts:
+        # 色: S2 が小さい (良い) = 緑、大きい (悪い) = 赤
+        f = min(1.0, s2 / 6.0)
+        col = (int(60 + f * 180), int(180 - f * 130), int(80 - f * 60))
+        # サイズ: 古→新で大きく
+        size = 6 + (i / max(1, n - 1)) * 8
+        pw.plot([hr], [rmssd], pen=None, symbol='o',
+                symbolSize=size, symbolBrush=col,
+                symbolPen=pg.mkPen(C.FG, width=0.5))
+    pw.setTitle(
+        f"コンディションマップ  色:S2 (緑=良・赤=悪)  大きさ:shot 順 (新=大)  n={n}"
+    )
+
+
+def _gr_cant_histogram(pw, t_arr, samples, sr, sessshots):
+    """[後方互換] 銃の傾き 分布。新規グラフに置き換え推奨。"""
+    pw.clear()
+    _setup_plot(pw, title="発射時 銃の傾き 分布",
+                x_label="銃の傾き", x_unit="°",
+                y_label="件数")
+    if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     vals = [np.degrees(s["fire_cant"]) for s in sessshots
             if s.get("fire_cant") is not None]
@@ -2383,17 +2636,17 @@ def _gr_cant_histogram(pw, t_arr, samples, sr, sessshots):
     pw.addItem(bar)
     mu = float(np.mean(vals))
     sd = float(np.std(vals))
-    pw.setTitle(f"Cant at fire dist  μ={mu:+.2f}°  σ={sd:.2f}°  n={len(vals)}")
+    pw.setTitle(f"発射時 銃の傾き 分布  平均={mu:+.2f}°  σ={sd:.2f}°  n={len(vals)}")
 
 
 def _gr_cant_sd_history(pw, t_arr, samples, sr, sessshots):
-    """shot 順での「発射前 0.5 秒 Cant σ」推移。低いほど cant が固定できている。"""
+    """shot 順での「発射前 0.5 秒 銃の傾き σ」推移。"""
     pw.clear()
-    pw.setTitle("Pre-trigger Cant σ per shot (last 0.5s)")
-    pw.setLabel('left', 'cant σ', units='°')
-    pw.setLabel('bottom', 'shot order')
-    pw.showGrid(x=True, y=True, alpha=0.15)
+    _setup_plot(pw, title="発射前 0.5秒 銃の傾きの揺れ 推移  (shot 順)",
+                x_label="shot 番号 (session 内)",
+                y_label="傾きの揺れ", y_unit="°")
     if not sessshots:
+        _empty_message(pw, "shot がありません")
         return
     xs, ys = [], []
     for i, s in enumerate(sessshots):
@@ -2407,9 +2660,10 @@ def _gr_cant_sd_history(pw, t_arr, samples, sr, sessshots):
                 symbolPen=pg.mkPen(None))
 
 
-# Cant 関連グラフを GRAPH_KINDS にも登録
-GRAPH_KINDS.append(("cant_hist",       "Cant distribution (session)",   _gr_cant_histogram))
-GRAPH_KINDS.append(("cant_sd_history", "Pre-trigger Cant σ per shot",   _gr_cant_sd_history))
+# 銃の傾き / 比較 / コンディション 関連グラフを後付け登録
+GRAPH_KINDS.append(("cant_sd_history", "発射前 銃傾きの揺れ 推移",         _gr_cant_sd_history))
+GRAPH_KINDS.append(("best_vs_worst",   "ベスト 5 vs ワースト 5  比較",     _gr_best_vs_worst))
+GRAPH_KINDS.append(("condition_map",   "コンディションマップ (心拍×HRV×S2)", _gr_condition_map))
 
 
 class CantTab(QWidget):
@@ -2437,11 +2691,10 @@ class CantTab(QWidget):
         # KPI 4 枚 (compact)
         hero_row = QHBoxLayout()
         hero_row.setSpacing(6)
-        self.hero_cant_mu  = RecoilTab._compact_card.__func__(self, "Cant μ (発射時 平均)", "°") \
-            if False else self._compact_card("Cant μ (発射時 平均)", "°")
-        self.hero_cant_sd  = self._compact_card("Cant σ session (ばらつき)", "°")
-        self.hero_presd_mu = self._compact_card("Pre-0.5s σ μ (狙い中 cant 変動)", "°")
-        self.hero_drift    = self._compact_card("Drift 前半→後半 (平均差)", "°")
+        self.hero_cant_mu  = self._compact_card("銃の傾き (撃発時 平均)",     "°")
+        self.hero_cant_sd  = self._compact_card("傾きのばらつき (shot 間)",   "°")
+        self.hero_presd_mu = self._compact_card("狙い中の傾き揺れ (0.5秒)",   "°")
+        self.hero_drift    = self._compact_card("前半 vs 後半 (平均差)",       "°")
         for h in [self.hero_cant_mu, self.hero_cant_sd, self.hero_presd_mu, self.hero_drift]:
             hero_row.addWidget(h[0], stretch=1)
         outer.addLayout(hero_row)
@@ -2496,9 +2749,9 @@ class CantTab(QWidget):
         gg.setVerticalSpacing(6)
         self.graphs = [
             GraphPanel("cant_history"),     # shot 順 cant
-            GraphPanel("cant_hist"),        # ヒストグラム (新規)
-            GraphPanel("cant_sd_history"),  # pre-0.5s σ 推移 (新規)
+            GraphPanel("cant_sd_history"),  # 発射前 0.5s σ 推移
             GraphPanel("cant_time"),        # 現在 trace の cant 時系列
+            GraphPanel("best_vs_worst"),    # ベスト/ワースト比較 (cant 含む)
         ]
         gg.addWidget(self.graphs[0], 0, 0)
         gg.addWidget(self.graphs[1], 0, 1)
@@ -2667,10 +2920,10 @@ class RecoilTab(QWidget):
         # 主要 KPI 4 枚 (横並び、コンパクト、各 70px 高さ)
         hero_row = QHBoxLayout()
         hero_row.setSpacing(6)
-        self.hero_peak    = self._compact_card("Peak μ (反動振幅)", "mm")
-        self.hero_settle  = self._compact_card("Settle μ (5mm 復元)", "s")
-        self.hero_follow  = self._compact_card("Follow R95 μ (0.5s)", "mm")
-        self.hero_dir_std = self._compact_card("Dir σ (方向ばらつき)", "°")
+        self.hero_peak    = self._compact_card("反動の振幅 (平均)",          "mm")
+        self.hero_settle  = self._compact_card("反動の戻り時間 (5mm まで)",   "秒")
+        self.hero_follow  = self._compact_card("フォロースルー (0.5秒)",      "mm")
+        self.hero_dir_std = self._compact_card("反動方向のばらつき",          "°")
         for h in [self.hero_peak, self.hero_settle, self.hero_follow, self.hero_dir_std]:
             hero_row.addWidget(h[0], stretch=1)
         outer.addLayout(hero_row)
@@ -2731,7 +2984,7 @@ class RecoilTab(QWidget):
         gg.setVerticalSpacing(6)
         self.graphs = [
             GraphPanel("recoil_xy"),
-            GraphPanel("recoil_dir_hist"),
+            GraphPanel("recoil_dir_amp"),
             GraphPanel("recoil_peak_hist"),
             GraphPanel("recoil_settle"),
         ]
@@ -3392,118 +3645,190 @@ HELP_HTML = """
 <h2>このソフトについて</h2>
 <p>SCATT Expert の補助ツール。本家 SCATT が既に表示している指標(10点/10.5点圏内の安定性、平均標準点の安定性、1秒/250ms の照準起動速さ等)とは
 重複させず、<b>本家にない or 見えにくい補助指標を多面的に出す</b>のが目的。</p>
-<p>伏射 (prone) に特化した数字を中心に据えているが、他姿勢でも有効。</p>
+<p>伏射 (prone) に特化した数字を中心に据えているが、他姿勢でも有効。SCATT Electronics の公式ソフトではない。</p>
 
-<h2>色の意味 (Dashboard)</h2>
-<p>各指標は <b>セッション内の過去 shot の μ ± σ と比較</b>して色付けされる:</p>
+<h2>タブ構成</h2>
+<table>
+  <tr><th>タブ</th><th>内容</th></tr>
+  <tr><td><b>Dashboard</b></td><td>現在 shot の主役 KPI + ミニターゲット + 指標表 + ローカル NLG フィードバック + 自由に選べるグラフ枠</td></tr>
+  <tr><td><b>Sessions</b></td><td>上 = セッション一覧、下 = サブタブ(Overview / Recoil / Cant / Drift / Spectrum)で全体レビュー</td></tr>
+  <tr><td><b>Shots</b></td><td>session 内 shot を 10 発 Series ごとにブロック化、本家 SCATT 風(ターゲット + 着弾 + テーブル + μ)</td></tr>
+  <tr><td><b>Help</b></td><td>このページ</td></tr>
+  <tr><td><b>Settings</b></td><td>動作・閾値・レイアウト・心拍・タブ可視性・エクスポート</td></tr>
+</table>
+<p class="muted">※ Target タブは Dashboard のミニターゲットに統合(廃止)。</p>
+
+<h2>キーボードショートカット</h2>
+<table>
+  <tr><th>キー</th><th>動作</th></tr>
+  <tr><td class="key">↑ / ↓</td><td>shot 一覧で前後の shot へ(Dashboard 連動更新)</td></tr>
+  <tr><td class="key">⌘1〜5</td><td>タブ切替</td></tr>
+  <tr><td class="key">Space</td><td>Live 監視 ON/OFF</td></tr>
+  <tr><td class="key">⌘E</td><td>現セッション shots を CSV エクスポート</td></tr>
+  <tr><td class="key">⌘⇧E</td><td>同 JSON エクスポート</td></tr>
+  <tr><td class="key">⌘R</td><td>shot 一覧 / セッション一覧を再読込</td></tr>
+  <tr><td class="key">F1</td><td>Help タブへ</td></tr>
+</table>
+
+<h2>色の意味 (Dashboard 指標表)</h2>
+<p>過去 shot との <b>z-score ランキング</b>で色を決める。「いつも何かは悪い」を前提に、最も外れた指標だけ色付け:</p>
 <table>
   <tr><th>色</th><th>意味</th></tr>
-  <tr><td><span class="good">緑(濃)</span></td><td>普段より <b>2σ 以上 良い</b> 方向</td></tr>
-  <tr><td><span style="color:#006e3c">緑(淡)</span></td><td>普段より 1σ 良い</td></tr>
-  <tr><td>黒</td><td>普段通り (μ±σ 以内)</td></tr>
-  <tr><td><span style="color:#be6e19">橙</span></td><td>普段より 1σ 悪い</td></tr>
-  <tr><td><span class="bad">赤</span></td><td>普段より <b>2σ 以上 悪い</b> = 外した原因の可能性</td></tr>
+  <tr><td><span class="bad">赤</span></td><td>session 内 z 最大 / 2 番目 — <b>今回特にダメな指標</b></td></tr>
+  <tr><td><span style="color:#be6e19">橙</span></td><td>z 3〜4 番目 — やや悪い</td></tr>
+  <tr><td>黒</td><td>普段通り(|z| &lt; 0.5)</td></tr>
+  <tr><td><span class="good">緑</span></td><td>session 内 z 最小 — 今回特に良い指標</td></tr>
 </table>
+<p class="muted">指標表は <b>z 値の悪い順</b>にソートされる。判定列に <span class="key">悪 ↑↑ z=+2.1σ</span> のように z 値も表示される。</p>
 
-<h2>主役 (Hero) 指標 — 本家 SCATT 互換</h2>
-<h3 class="key">10a   10-ring time (last 1s)</h3>
-<p>発射直前 1 秒のうち照準が <b>10-ring (R≤5.2mm)</b> 内にあった時間の割合 (%)。高いほど良い。本家 SCATT の "10a" と同義。</p>
-<h3 class="key">10a-0.5   10-ring time (last 0.5s)</h3>
-<p>同じく 10-ring 内時間 %、ただし発射前 <b>0.5 秒</b>の窓。高いほど良い。本家の "10a-0.5"(or "10a5")相当。</p>
-<h3 class="key">S1   stability (last 1s)</h3>
-<p>発射前 1 秒のホールド円半径(R95: 95% を含む円)。<b>mm 単位、低いほど安定</b>。本家 "S1"。</p>
-<h3 class="key">S2   stability (last 0.5s)</h3>
-<p>同じく <b>0.5 秒</b>。伏射の最重要指標。本家 "S2"。</p>
-<p class="muted">本家には他に <b>10b</b>(inner-10、R≤2.5mm)、<b>9c</b>(9-ring、R≤13.2mm) 等もあり、本ソフトでは中段指標表に並ぶ。</p>
-
-<h2>中段指標</h2>
-<table>
-  <tr><th>指標</th><th>意味</th><th>方向</th></tr>
-  <tr><td class="key">10b / 10b-0.5</td><td>Inner-10 (R≤2.5mm) 内時間 %、1s / 0.5s</td><td>高いほど良い</td></tr>
-  <tr><td class="key">9c</td><td>9-ring (R≤13.2mm) 内時間 %、1s</td><td>高いほど良い</td></tr>
-  <tr><td class="key">R95 last 2/3s</td><td>発射前 2/3 秒のホールド円</td><td>低いほど良い (S1/S2 の長窓版)</td></tr>
-  <tr><td class="key">Trigger timing</td><td>発射の瞬間のサイト移動速度 (mm/s)</td><td>低いほど良い(止めて撃てた)</td></tr>
-  <tr><td class="key">Cant (at fire)</td><td>発射の瞬間の銃身ロール角(度)</td><td>個人毎の自然な角度から外れていなければOK</td></tr>
-  <tr><td class="key">Cant σ (last 0.5s)</td><td>発射直前 0.5 秒の cant の標準偏差</td><td>低いほど良い (cant がブレていない)</td></tr>
-  <tr><td class="key">Hold time</td><td>発射直前に速度 15mm/s 未満が連続した秒数</td><td>高いほど良い (止めていた時間)</td></tr>
-  <tr><td class="key">Aim duration</td><td>構え始め〜発射までの時間</td><td>個人による(2〜10秒典型)</td></tr>
-  <tr><td class="key">Tremor 8–12Hz</td><td>生理振戦帯域の FFT パワー(X 座標)</td><td>低いほど良い</td></tr>
-  <tr><td class="key">Breath 0.15–0.5Hz</td><td>呼吸帯域の FFT パワー(X 座標)</td><td>低いほど良い(息止め成功)</td></tr>
-  <tr><td class="key">Approach monotonic</td><td>発射前 2 秒の中心への単調収束率</td><td>高いほど良い (狙い直しが少ない)</td></tr>
-  <tr><td class="key">Approach oscill /s</td><td>同 1 秒あたりの振動回数</td><td>低いほど良い</td></tr>
-  <tr><td class="key">HR at fire</td><td>発射時の心拍数 (bpm)。BLE 心拍受信時のみ</td><td>低いほど落ち着き</td></tr>
-  <tr><td class="key">HRV (RMSSD 30s)</td><td>直近 30 秒の心拍変動 (ms)</td><td>高いほど自律神経バランス◯</td></tr>
-  <tr><td class="key">Recoil peak amplitude</td><td>発射後の最大変位 (mm)</td><td>低いほど良い</td></tr>
-  <tr><td class="key">Recoil settle time</td><td>発射後 5mm 以内に戻る時間 (秒)</td><td>低いほど良い (素早く戻る)</td></tr>
-  <tr><td class="key">Follow-through R95</td><td>発射後 0.5 秒の R95 (mm)</td><td>低いほど良い (フォロースルー安定)</td></tr>
-  <tr><td class="key">Recoil direction σ</td><td>反動方向のばらつき (度)</td><td>低いほど良い (毎回同方向に反動)</td></tr>
-</table>
-
-<h2>グラフ</h2>
-<p>Dashboard の下段 4 枠は ComboBox でグラフ種別を選択できる。</p>
-<table>
-  <tr><th>種別</th><th>意味</th></tr>
-  <tr><td>Velocity (time-from-fire)</td><td>速度時系列。x=0 が発射の瞬間。緑=狙い、赤=反動。点線 15mm/s = hold 閾値</td></tr>
-  <tr><td>Recent 5 shots R95 bars</td><td>直近 5 発の R95 last 0.5s を棒グラフで比較</td></tr>
-  <tr><td>Shot impact scatter</td><td>session 内の発射点散布図。古→新で色変化、中心 = +、95% 円</td></tr>
-  <tr><td>Current trace X-Y path</td><td>現在 trace の軌跡。緑=狙い、赤=反動、黄=発射点</td></tr>
-  <tr><td>Cant over time (current)</td><td>現在 trace の cant 時系列(度)</td></tr>
-  <tr><td>FFT spectrum (pre-trigger)</td><td>発射前期間の周波数スペクトル。橙帯=呼吸、赤帯=振戦</td></tr>
-  <tr><td>R95 history per shot</td><td>shot 順での R95 0.5/1/2s 推移</td></tr>
-  <tr><td>Cant at fire per shot</td><td>shot 順での発射時 cant 推移(姿勢崩れ検出)</td></tr>
-  <tr><td>Trigger timing per shot</td><td>shot 順での撃発タイミング速度(タイミング癖)</td></tr>
-  <tr><td>Hold time per shot</td><td>shot 順での hold time 推移</td></tr>
-</table>
-
-<h2>その他のタブ</h2>
-<table>
-  <tr><th>Tab</th><th>内容</th></tr>
-  <tr><td>Sessions</td><td>全 session を横断レビュー(集計指標、ベスト/ワースト)。行クリックで該当 session に切替</td></tr>
-  <tr><td>Spectrum</td><td>pre-trigger 全期間の FFT スペクトル(X / Y 両軸、振戦・呼吸帯ハイライト)</td></tr>
-  <tr><td>Shots</td><td>session 内全 shot を表形式で横断比較。発射点距離 200mm 以上の異常 shot を赤背景で表示、ボタンで一括物理削除可</td></tr>
-  <tr><td><b>Recoil</b></td><td><b>反動受け 専用タブ</b>。Peak / Settle time / Follow-through / Direction σ の 4 KPI + 詳細表 + 反動軌跡オーバーレイ / 方向ヒストグラム / 戻り時間推移 / Peak 振幅推移 のグラフ 4 枚</td></tr>
-  <tr><td>Drift</td><td>shot 発射点散布図(古→新)+ Cant 推移 + 相関値</td></tr>
-  <tr><td>Target</td><td>ISSF 50m ライフルターゲット + 軌跡(本家 SCATT 同等のサブ表示)</td></tr>
-</table>
-
-<h2>Recoil タブの読み方</h2>
-<table>
-  <tr><th>指標</th><th>意味</th><th>狙うべき値</th></tr>
-  <tr><td class="key">Peak amplitude</td><td>発射後の最大変位 (mm)</td><td>低いほど抑え込めている</td></tr>
-  <tr><td class="key">Settle time</td><td>反動後、発射点から 5mm 以内に戻るまでの時間 (秒)。戻らなければ "—"</td><td>0.3〜0.6 秒程度が典型、低いほど復元が早い</td></tr>
-  <tr><td class="key">Follow-through R95</td><td>発射後 0.5 秒のホールド円 (mm)。フォロースルー中の安定度</td><td>低いほどフォロースルーが綺麗</td></tr>
-  <tr><td class="key">Direction σ</td><td>発射 50ms 後の動きベクトル方向の標準偏差 (度、円形統計)</td><td>低いほど毎回同方向に反動 = 銃の保持が一貫</td></tr>
-  <tr><td class="key">Direction angle</td><td>反動初期の方向 (0°=右、90°=上)</td><td>個人/銃で固有、急変したら持ち方異常</td></tr>
-</table>
-
-<h3>4 つのグラフ</h3>
+<h2>比較対象の切替 (ToolBar)</h2>
+<p>ToolBar の <span class="key">比較対象:</span> で μ/σ 計算範囲を切替可能:</p>
 <ul>
-  <li><b>Recoil trajectories overlay</b>: 直近 30 shot の発射後軌跡を発射点を原点として重ねる。古→新で色濃く、現在 shot 太線。5mm の "settle 円" 点線つき。<br>
-    → <b>銃の保持と反動方向の一貫性が一目で分かる</b></li>
-  <li><b>Direction histogram</b>: 反動方向 (50ms 動きベクトル) の度数分布。平均方向と円形 σ も表示</li>
-  <li><b>Settle time per shot</b>: shot 順に戻り時間がどう推移するか</li>
-  <li><b>Peak amplitude per shot</b>: 反動振幅の推移。疲労や持ち方崩れで増えていないか</li>
+  <li><b>現セッション</b>: 今のセッション内の他 shot だけと比較</li>
+  <li><b>同姿勢の全 shot</b>: 同じ姿勢の全セッション横断</li>
+  <li><b>全 shot</b>: 全 shot 横断</li>
 </ul>
+
+<h2>主役 KPI 4 枚 — 本家 SCATT 互換</h2>
+<p>デフォルトは <b>10a / 10a-0.5 / S1 / S2</b>。Settings → Layout の「主役 KPI #1〜#4」で<b>自由に変更可能</b>(全 24 指標から)。</p>
+<h3 class="key">10a   10点圏 滞在時間 (1秒)</h3>
+<p>発射直前 1 秒のうち照準が <b>10-ring (R≤5.2mm)</b> 内にあった時間の割合 (%)。高いほど良い。本家 SCATT の "10a" と同義。</p>
+<h3 class="key">10a-0.5   10点圏 滞在時間 (0.5秒)</h3>
+<p>同じく 10-ring 内時間 %、ただし発射前 <b>0.5 秒</b>の窓。本家の "10a-0.5" 相当。</p>
+<h3 class="key">S1   狙いの安定度 (1秒)</h3>
+<p>発射前 1 秒のホールド円半径(R95: 95% を含む円)。<b>mm 単位、低いほど安定</b>。本家 "S1"。</p>
+<h3 class="key">S2   狙いの安定度 (0.5秒)</h3>
+<p>同じく <b>0.5 秒</b>。伏射の最重要指標。本家 "S2"。</p>
+
+<h2>中段指標(20+)</h2>
+<p>各指標は <b>本ソフトが計算する補助情報</b>。良い/悪いの絶対基準は個人・場面で異なるので、<b>自分の過去の平均と比較する</b>(z-score)のが基本的な使い方。</p>
+<table>
+  <tr><th>指標</th><th>意味</th></tr>
+  <tr><td class="key">10b / 10b-0.5</td><td>10点中央 (R≤2.5mm) 内時間 %、1秒 / 0.5秒</td></tr>
+  <tr><td class="key">9c</td><td>9点圏 (R≤13.2mm) 内時間 %、1秒</td></tr>
+  <tr><td class="key">R95 直前 2/3秒</td><td>発射前 2/3 秒のホールド円(S1/S2 の長窓版)</td></tr>
+  <tr><td class="key">撃発タイミング</td><td>発射の瞬間のサイト移動速度 (mm/s)</td></tr>
+  <tr><td class="key">銃の傾き (撃発時)</td><td>発射の瞬間の銃身ロール角(度)</td></tr>
+  <tr><td class="key">銃傾きの揺れ (0.5秒)</td><td>発射前 0.5 秒の cant 標準偏差</td></tr>
+  <tr><td class="key">静止時間</td><td>発射直前に速度 15mm/s 未満が連続した秒数</td></tr>
+  <tr><td class="key">構え時間</td><td>構え始め〜発射までの時間</td></tr>
+  <tr><td class="key">力み (8–12Hz)</td><td>生理的ふるえ帯の FFT パワー。力みすぎ・疲労で増えやすい</td></tr>
+  <tr><td class="key">心拍由来のゆれ (0.8–2Hz)</td><td>息止め中に支配的になる帯域(心拍 50–120 bpm 由来)</td></tr>
+  <tr><td class="key">呼吸 (0.15–0.5Hz)</td><td>呼吸帯域の FFT パワー</td></tr>
+  <tr><td class="key">サイト全体のゆれ</td><td>全帯域(0.1–30Hz)エネルギー総和</td></tr>
+  <tr><td class="key">狙いの直線度</td><td>発射前 2 秒の中心への単調収束率</td></tr>
+  <tr><td class="key">狙い直し /秒</td><td>1 秒あたりの振動回数</td></tr>
+  <tr><td class="key">心拍 (撃発時)</td><td>発射時の心拍数 (bpm)、BLE 受信時のみ</td></tr>
+  <tr><td class="key">心拍変動 HRV</td><td>直近 30 秒の RMSSD (ms)</td></tr>
+  <tr><td class="key">反動の振幅</td><td>発射後の最大変位 (mm)</td></tr>
+  <tr><td class="key">反動の戻り時間</td><td>発射後 5mm 以内に戻る時間 (秒)</td></tr>
+  <tr><td class="key">フォロースルー安定</td><td>発射後 0.5 秒の R95 (mm)</td></tr>
+  <tr><td class="key">反動方向のばらつき</td><td>session 内反動方向の標準偏差 (度、円形統計)</td></tr>
+</table>
+
+<h2>グラフ(23 種)</h2>
+<p>Dashboard 下段の各枠は ComboBox でグラフを選択可能。Settings → Layout で初期値も指定可。</p>
+
+<h3>軌跡・座標</h3>
+<table>
+  <tr><th>名前</th><th>意味</th></tr>
+  <tr><td>速度時系列 (発射 = 0)</td><td>x=0 が発射の瞬間。緑=狙い、赤=反動、点線=15/60mm/s 閾値</td></tr>
+  <tr><td>発射点 散布図</td><td>session 内の着弾散布、古→新で色変化、重心 + 95% 円</td></tr>
+  <tr><td>現 trace の軌跡 (X-Y)</td><td>現在 trace の軌跡。緑=狙い、赤=反動、黄=発射点</td></tr>
+  <tr><td>銃の傾き 時系列</td><td>現 trace の銃の傾き(度)時系列</td></tr>
+</table>
+
+<h3>セッション傾向</h3>
+<table>
+  <tr><th>名前</th><th>意味</th></tr>
+  <tr><td>直近 5 発の S2 棒グラフ</td><td>S2 (R95 0.5s) の直近 5 発を棒で。最新は青枠、値で色分け(緑/赤)</td></tr>
+  <tr><td>安定度 推移</td><td>S2(赤)/S1(橙)/R95-2s(青) の 3 系列を shot 順に</td></tr>
+  <tr><td>発射時 銃の傾き 推移</td><td>shot 順での銃の傾き。姿勢崩れ検出</td></tr>
+  <tr><td>撃発タイミング 推移</td><td>shot 順での発射時速度。タイミングの癖を見る</td></tr>
+  <tr><td>静止時間 推移</td><td>各 shot の最終ホールド時間</td></tr>
+  <tr><td>発射前 銃傾きの揺れ 推移</td><td>発射前 0.5 秒の cant σ。狙い中の傾き変動</td></tr>
+  <tr><td>セッション概観 (S2 + 心拍)</td><td>S2 と心拍を 2 軸で重ねて流れを把握</td></tr>
+</table>
+
+<h3>相関(原因究明)</h3>
+<table>
+  <tr><th>名前</th><th>意味</th></tr>
+  <tr><td>心拍 vs S2 (相関)</td><td>心拍が高い時に安定度が落ちる/落ちないを散布図で。回帰線 + 相関係数</td></tr>
+  <tr><td>HRV vs S2 (相関)</td><td>HRV(リラックス度)と安定度の関係</td></tr>
+  <tr><td>撃発タイミング vs S2 (相関)</td><td>速いタイミングで撃つと外す/外さない</td></tr>
+</table>
+
+<h3>反動分析</h3>
+<table>
+  <tr><th>名前</th><th>意味</th></tr>
+  <tr><td>反動軌跡 オーバーレイ</td><td>直近 30 shot の発射後 0.8 秒を発射点起点で重ね描き。<b>銃保持の一貫性が一目</b></td></tr>
+  <tr><td>反動方向 × 振幅</td><td>方向(°)× 振幅(mm)散布図。古→新で色変化、平均方向の縦線</td></tr>
+  <tr><td>反動の振幅 推移</td><td>shot 順での peak 推移。疲労や持ち方崩れで増えるか</td></tr>
+  <tr><td>反動の戻り時間 推移</td><td>5mm 以内に戻る時間の推移</td></tr>
+  <tr><td>発射後速度 (現 trace)</td><td>現在 trace の発射後速度時系列</td></tr>
+</table>
+
+<h3>診断・分析</h3>
+<table>
+  <tr><th>名前</th><th>意味</th></tr>
+  <tr><td>FFT スペクトル (発射前)</td><td>X/Y の周波数分解。青帯=呼吸、緑帯=心拍由来、赤帯=力み</td></tr>
+  <tr><td>心拍 時系列</td><td>直近 30 分の心拍履歴</td></tr>
+  <tr><td><b>ベスト 5 vs ワースト 5 比較</b></td><td>S2 で上位/下位を分け、S1/Cant/タイミング/静止時間で何が違うかを比較</td></tr>
+  <tr><td><b>コンディションマップ (心拍×HRV×S2)</b></td><td>バブル散布: 色=S2(緑=良/赤=悪)、大きさ=shot 順。<b>状態と結果の関係を可視化</b></td></tr>
+</table>
+
+<h2>反動分析 (Sessions → Recoil サブタブ)</h2>
+<table>
+  <tr><th>指標</th><th>意味</th></tr>
+  <tr><td class="key">反動の振幅</td><td>発射後の最大変位 (mm)</td></tr>
+  <tr><td class="key">反動の戻り時間</td><td>5mm 以内に戻る時間 (秒)。戻らなければ "—"</td></tr>
+  <tr><td class="key">フォロースルー安定</td><td>発射後 0.5 秒のホールド円 (mm)</td></tr>
+  <tr><td class="key">反動方向のばらつき</td><td>session 内 反動方向の標準偏差 (度、円形統計)</td></tr>
+</table>
+
+<h2>心拍 / HRV 連携 (BLE)</h2>
+<ol>
+  <li>Apple Watch + iPhone に <b>HeartCast</b> 等の BLE Heart Rate Profile ブロードキャスタを入れる(iPhone から放送が安定)</li>
+  <li>Mac 側で「心拍 接続」ボタンを押す → 自動スキャンして接続</li>
+  <li>接続中は ToolBar に <span class="key">心拍: 72  HRV: 36ms</span> が常時表示</li>
+  <li>shot 受信時の心拍 + HRV が <code>~/Library/Application Support/scatt-prone-analyzer/extra.db</code> に永続化される</li>
+</ol>
+<p>胸ベルト (Polar H10 等) も同じインターフェースで動く。<code>make ble-scan</code> でデバイス確認可能。</p>
+
+<h2>ローカル自然言語フィードバック</h2>
+<p>Dashboard と Sessions → Overview に、ローカル動作(ネット不要・LLM ファイル不要)の自然言語所見が表示される。例:</p>
+<pre style="background:#f7f8fb; padding:10px; border-radius:4px; font-size:12px;">力み (8-12Hz) が顕著に大きく 0.082 でした。
+反動の振幅がやや大きく 142.1mm でした。
+→ ヒント: 力みが大きい時は呼吸前のリラックス、脱力を意識。</pre>
+<p>セッション全体のフィードバックでは前半 vs 後半の傾向、ベスト shot 抽出も自動。</p>
 
 <h2>誤反応 shot の自動検出と削除</h2>
 <p>Shots タブで <b>発射点距離 (= 中心からの mm) </b> が閾値 (デフォルト 200mm) 以上の shot を赤背景表示。
-<span class="key">異常 shot を一括削除</span> ボタンで <b>shots 行を物理削除</b>(SCATT 側からも消える)し、孤立した traces 行も削除する。
-取り消し不可なので確認ダイアログあり。</p>
+<span class="key">異常 shot を一括削除</span> ボタンで <b>shots 行を物理削除</b>(SCATT 側からも消える)し、孤立した traces 行と extra.db の心拍データも一緒に削除する。取り消し不可なので確認ダイアログあり。</p>
 
 <h2>Live モード</h2>
-<p>起動時から自動で polling 開始(<span class="key">--no-live</span> で停止可)。
-新規 trace に shot が紐付いていれば自動で Dashboard を更新、shot がない (銃口が target を横切っただけ等) trace は無視して<b>前の表示を保持</b>する。</p>
+<p>起動時から自動で polling 開始(Settings の「起動時に Live polling を開始」で OFF も可)。
+新規 trace に shot が紐付いていれば自動で Dashboard を更新、shot がない (銃口が target を横切っただけ等) trace は無視して<b>前の表示を保持</b>する。
+SCATT 側で session が切り替わると自動追随して Sessions / Shots も入れ替わる。</p>
+
+<h2>CSV / JSON エクスポート</h2>
+<p>Settings → Export に 3 つのボタン:</p>
+<ul>
+  <li>現セッション shots を CSV — pandas / Excel / R での解析用、28 列のフラットな構造</li>
+  <li>現セッション shots を JSON — メタ + 集計のみ(samples は含まない)</li>
+  <li>全 session 集計 CSV — 1 行 = 1 session の集計(距離、姿勢、shot 数、平均 10a/S1/S2/心拍 等)</li>
+</ul>
 
 <h2>SCATT 本家との関係</h2>
 <p>SCATT Expert が既に提供している以下の指標は本ソフトでは敢えて重複させていない:</p>
 <ul>
-  <li>10点/10.5点圏内の安定性</li>
-  <li>平均標準点の安定性</li>
-  <li>1秒/250ms 単位の照準起動速さ</li>
+  <li>10点/10.5点圏内の安定性 → 本家の値を引き続き利用</li>
+  <li>平均標準点の安定性 → 同上</li>
+  <li>1秒/250ms 単位の照準起動速さ → 同上</li>
   <li>軌跡の時間グラデーション描画(本家の方が美しい)</li>
   <li>スコア計算 (decimal scoring 等)</li>
 </ul>
-<p>本ソフトはあくまで補助。SCATT の右隣に並べて使うことを想定している。</p>
+<p>本ソフトはあくまで補助。SCATT の右隣に並べて使うことを想定している。SCATT, SCATT Expert は SCATT Electronics の商標。</p>
 """
 
 
@@ -3608,13 +3933,35 @@ class SettingsTab(QWidget):
             form_l.addRow(f"枠 #{i+1} 初期グラフ", cb)
         self.cb_show_shotlist = QCheckBox()
         self.cb_show_shotlist.setChecked(SETTINGS.get("layout/show_shot_list"))
-        form_l.addRow("左 shot 一覧を表示", self.cb_show_shotlist)
+        form_l.addRow("左 shot 一覧", self.cb_show_shotlist)
         self.cb_show_hero = QCheckBox()
         self.cb_show_hero.setChecked(SETTINGS.get("layout/show_hero_cards"))
-        form_l.addRow("主役カード 2 枚を表示", self.cb_show_hero)
+        form_l.addRow("主役 KPI 4 枚", self.cb_show_hero)
+        self.cb_show_target = QCheckBox()
+        self.cb_show_target.setChecked(SETTINGS.get("layout/show_mini_target"))
+        form_l.addRow("ミニターゲット", self.cb_show_target)
         self.cb_show_metrics = QCheckBox()
         self.cb_show_metrics.setChecked(SETTINGS.get("layout/show_metrics_table"))
-        form_l.addRow("指標表を表示", self.cb_show_metrics)
+        form_l.addRow("指標表", self.cb_show_metrics)
+        self.cb_show_feedback = QCheckBox()
+        self.cb_show_feedback.setChecked(SETTINGS.get("layout/show_feedback"))
+        form_l.addRow("フィードバック (NLG)", self.cb_show_feedback)
+        self.cb_show_graphs = QCheckBox()
+        self.cb_show_graphs.setChecked(SETTINGS.get("layout/show_graphs"))
+        form_l.addRow("グラフエリア", self.cb_show_graphs)
+
+        # 主役 KPI 4 枠の中身 (METRICS から自由選択)
+        self.cb_hero_kpis: list[QComboBox] = []
+        for i in range(1, 5):
+            cb = QComboBox()
+            for m in METRICS:
+                cb.addItem(m[1], m[0])
+            cur_key = SETTINGS.get(f"layout/hero_kpi_{i}")
+            for j in range(cb.count()):
+                if cb.itemData(j) == cur_key:
+                    cb.setCurrentIndex(j); break
+            self.cb_hero_kpis.append(cb)
+            form_l.addRow(f"主役 KPI #{i}", cb)
         lw = QWidget(); lw.setLayout(form_l); v.addWidget(lw)
 
         # ========== Heart Rate ==========
@@ -3744,7 +4091,12 @@ class SettingsTab(QWidget):
             SETTINGS.set(f"layout/graph_default_{i+1}", cb.currentData())
         SETTINGS.set("layout/show_shot_list", self.cb_show_shotlist.isChecked())
         SETTINGS.set("layout/show_hero_cards", self.cb_show_hero.isChecked())
+        SETTINGS.set("layout/show_mini_target", self.cb_show_target.isChecked())
         SETTINGS.set("layout/show_metrics_table", self.cb_show_metrics.isChecked())
+        SETTINGS.set("layout/show_feedback", self.cb_show_feedback.isChecked())
+        SETTINGS.set("layout/show_graphs", self.cb_show_graphs.isChecked())
+        for i, cb in enumerate(self.cb_hero_kpis):
+            SETTINGS.set(f"layout/hero_kpi_{i+1}", cb.currentData())
         for key, cb in self.cb_tabs.items():
             SETTINGS.set(f"tabs/{key}", cb.isChecked())
         # 心拍
@@ -3888,7 +4240,7 @@ class TargetTab(QGraphicsView):
 # ===========================================================================
 
 class ShotListPanel(QListWidget):
-    """左ペイン: 過去 shot を新しい順に並べる。
+    """左ペイン: 現セッション内の shot を表示。番号は session 内連番。
     マウスクリック / 矢印キー (↑↓) 両方で on_select(trace_id) が呼ばれる。
     """
 
@@ -3896,7 +4248,8 @@ class ShotListPanel(QListWidget):
         super().__init__()
         self.db_path = db_path
         self.on_select = None
-        self._suppress = False  # reload 中のシグナル抑制
+        self._suppress = False
+        self._session_id: int | None = None
         self.setStyleSheet(
             f"QListWidget {{ background-color: {hex_of(C.PANEL_LO)}; color: {hex_of(C.FG)};"
             f"  border: 1px solid {hex_of(C.BORDER)}; "
@@ -3917,36 +4270,50 @@ class ShotListPanel(QListWidget):
             self.on_select(tid)
 
     def reload(self):
+        """現セッション (self._session_id) の shot を session 内連番で表示。"""
         import datetime
         self._suppress = True
         self.clear()
+        if self._session_id is None:
+            self._suppress = False
+            return
         try:
             conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=2.0)
             rows = conn.execute(
-                "SELECT shot_id, trace_id, timer, match_shot, missed, favorite "
-                "FROM shots WHERE deleted = 0 ORDER BY timer DESC LIMIT 300"
+                "SELECT sh.shot_id, sh.trace_id, sh.timer, sh.match_shot, sh.missed, sh.favorite "
+                "FROM shots sh JOIN traces t ON t.trace_id = sh.trace_id "
+                "WHERE sh.deleted = 0 AND t.session_id = ? "
+                "ORDER BY sh.timer ASC",
+                (self._session_id,),
             ).fetchall()
             conn.close()
         except Exception as e:
             self.addItem(f"<error: {e}>")
             self._suppress = False
             return
-        for sid, tid, ts, match, missed, fav in rows:
+        # 古→新で取得して連番、表示は新→古(新しいのが上)
+        for n, (sid, tid, ts, match, missed, fav) in enumerate(rows, start=1):
             t_str = datetime.datetime.fromtimestamp(ts / 1000).strftime("%m-%d %H:%M")
             tags = []
             if match: tags.append("M")
             if fav: tags.append("★")
             if missed: tags.append("X")
             tag = " ".join(tags) if tags else ""
-            label = f"#{sid:>3}  {t_str}  {tag}"
-            item = QTableWidgetItem(label) if False else None
-            # QListWidget 用に普通の addItem を使う
-            self.addItem(label)
-            self.item(self.count() - 1).setData(Qt.ItemDataRole.UserRole, tid)
+            label = f"#{n:>2}  {t_str}  {tag}"
+            self.insertItem(0, label)  # 先頭挿入で新しいのが上
+            self.item(0).setData(Qt.ItemDataRole.UserRole, tid)
         self._suppress = False
+
+    def set_session(self, session_id: int | None):
+        """表示対象 session を切り替えて reload。"""
+        if session_id == self._session_id:
+            return
+        self._session_id = session_id
+        self.reload()
 
     def prepend_shot(self, shot_id: int, trace_id: int, timer_ms: int,
                      match: bool, missed: bool, favorite: bool):
+        """新規 shot を先頭に。番号は現在表示数 + 1。"""
         import datetime
         t_str = datetime.datetime.fromtimestamp(timer_ms / 1000).strftime("%m-%d %H:%M")
         tags = []
@@ -3954,8 +4321,10 @@ class ShotListPanel(QListWidget):
         if favorite: tags.append("★")
         if missed: tags.append("X")
         tag = " ".join(tags) if tags else ""
+        # session 内通し番号は表示数 + 1
+        n = self.count() + 1
         self._suppress = True
-        self.insertItem(0, f"#{shot_id:>3}  {t_str}  {tag}  *new*")
+        self.insertItem(0, f"#{n:>2}  {t_str}  {tag}  *new*")
         self.item(0).setData(Qt.ItemDataRole.UserRole, trace_id)
         self._suppress = False
 
@@ -4005,14 +4374,15 @@ class MainWindow(QMainWindow):
             f"QLabel {{ color: {hex_of(C.FG)}; }}"
         )
 
-        # トップタブを 6 個に絞る (Spectrum/Recoil/Cant/Drift は Sessions のサブタブへ移行)
+        # トップタブを 5 個に絞る (Target は Dashboard のミニターゲットに統合)
         self.dashboard = DashboardTab()
         self.sessions_tab = SessionsTab()
         self.sessions_tab.on_session_selected = self._on_sessions_tab_select
         self.shots_tab = ShotsTab()
         self.shots_tab.on_shot_selected = self._on_shot_selected
         self.shots_tab.on_delete_committed = self._on_delete_committed
-        self.target = TargetTab()
+        # Target タブは廃止、Dashboard の mini_target を参照
+        self.target = self.dashboard.mini_target
         self.help_tab = HelpTab()
         self.settings_tab = SettingsTab()
         self.settings_tab.layout_changed.connect(self._on_layout_changed)
@@ -4029,13 +4399,12 @@ class MainWindow(QMainWindow):
         self.tabs.setUsesScrollButtons(True)
         self.tabs.setElideMode(Qt.TextElideMode.ElideNone)
         self.tabs.setDocumentMode(True)
-        # 表示する tab を SETTINGS から (トップタブは 6 個)
+        # 表示する tab を SETTINGS から (アイコンつき)
         tab_defs = [
             ("dashboard", self.dashboard, "Dashboard"),
-            ("sessions", self.sessions_tab, "Sessions"),
-            ("shots", self.shots_tab, "Shots"),
-            ("target", self.target, "Target"),
-            ("help", self.help_tab, "Help"),
+            ("sessions",  self.sessions_tab, "Sessions"),
+            ("shots",     self.shots_tab, "Shots"),
+            ("help",      self.help_tab, "Help"),
         ]
         for key, w, label in tab_defs:
             if SETTINGS.get(f"tabs/{key}"):
@@ -4062,15 +4431,15 @@ class MainWindow(QMainWindow):
 
         tb = QToolBar("toolbar")
         self.addToolBar(tb)
-        self.start_btn = QPushButton("Live Start")
+        self.start_btn = QPushButton("Live 開始")
         self.start_btn.clicked.connect(self._toggle_live)
         tb.addWidget(self.start_btn)
-        reload_btn = QPushButton("Reload")
+        reload_btn = QPushButton("再読込")
         reload_btn.clicked.connect(self.shot_list.reload)
         tb.addWidget(reload_btn)
         # セッション切替 + Active 表示
         tb.addSeparator()
-        sess_lbl = QLabel("Session")
+        sess_lbl = QLabel("セッション")
         sess_lbl.setStyleSheet(
             f"color: {hex_of(C.FG_MUTED)}; font-size: 11px; padding: 0 4px;"
         )
@@ -4095,13 +4464,13 @@ class MainWindow(QMainWindow):
         self.active_indicator.setVisible(False)
         tb.addWidget(self.active_indicator)
         # 比較範囲ドロップダウン
-        cmp_lbl = QLabel("compare:")
+        cmp_lbl = QLabel("比較対象:")
         cmp_lbl.setStyleSheet(f"color: {hex_of(C.FG_MUTED)}; font-size: 11px; padding: 0 4px;")
         tb.addWidget(cmp_lbl)
         self.compare_scope = QComboBox()
-        self.compare_scope.addItem("current session", "session")
-        self.compare_scope.addItem("same position", "position")
-        self.compare_scope.addItem("all shots", "all")
+        self.compare_scope.addItem("現セッション", "session")
+        self.compare_scope.addItem("同姿勢の全 shot", "position")
+        self.compare_scope.addItem("全 shot", "all")
         self.compare_scope.setCurrentIndex(0)
         self.compare_scope.currentIndexChanged.connect(self._on_compare_scope_changed)
         self.compare_scope.setStyleSheet(
@@ -4111,19 +4480,55 @@ class MainWindow(QMainWindow):
         tb.addWidget(self.compare_scope)
         # 心拍 ToolBar
         tb.addSeparator()
-        self.hr_label = QLabel("HR: —    RMSSD: —")
+        self.hr_label = QLabel("心拍: —    HRV: —")
         self.hr_label.setStyleSheet(
             f"color: {hex_of(C.ACCENT_R)}; font-family: 'SF Mono', monospace;"
             "  font-size: 12px; padding: 0 8px;"
         )
         tb.addWidget(self.hr_label)
-        self.hr_btn = QPushButton("HR Start")
+        self.hr_btn = QPushButton("心拍 接続")
         self.hr_btn.clicked.connect(self._toggle_hr)
         tb.addWidget(self.hr_btn)
 
         self.status = QStatusBar()
         self.setStatusBar(self.status)
+        # 永続 hint ラベル (右側に常時表示)
+        self.status_hint = QLabel(
+            "  ↑↓ shot 切替  ·  ⌘1〜5 タブ  ·  Space Live  ·  ⌘E 出力  ·  F1 ヘルプ"
+        )
+        self.status_hint.setStyleSheet(
+            f"color: {hex_of(C.FG_MUTED)}; font-size: 10px; padding: 0 8px;"
+        )
+        self.status.addPermanentWidget(self.status_hint)
         self.status.showMessage(f"db: {db_path}")
+
+        # ----- キーボードショートカット -----
+        # Cmd+1〜5 でタブ切替
+        for i in range(1, 6):
+            sc = QShortcut(QKeySequence(f"Ctrl+{i}"), self)
+            sc.activated.connect(lambda idx=i - 1: self._switch_tab(idx))
+        # Cmd+E: 現セッション shots を CSV エクスポート
+        QShortcut(QKeySequence("Ctrl+E"), self).activated.connect(self._export_shots_csv)
+        # Cmd+Shift+E: JSON
+        QShortcut(QKeySequence("Ctrl+Shift+E"), self).activated.connect(self._export_shots_json)
+        # Space: Live トグル
+        QShortcut(QKeySequence("Space"), self).activated.connect(self._toggle_live)
+        # F1: Help タブへ
+        QShortcut(QKeySequence("F1"), self).activated.connect(
+            lambda: self.tabs.setCurrentWidget(self.help_tab)
+        )
+        # ← →: shot リスト移動 (shot_list がフォーカスを持ってなくても動くように)
+        QShortcut(QKeySequence("Down"), self).activated.connect(self._next_shot)
+        QShortcut(QKeySequence("Up"), self).activated.connect(self._prev_shot)
+        # Cmd+R: shot リスト reload
+        QShortcut(QKeySequence("Ctrl+R"), self).activated.connect(self._reload_all)
+
+        # ----- 各タブにツールチップ -----
+        self.tabs.setTabToolTip(0, "現在 shot の主要 KPI (10a / S1 / S2) + ターゲット + 指標表 + グラフ")
+        self.tabs.setTabToolTip(1, "セッション横断レビュー。サブタブ (Overview/Recoil/Cant/Drift/Spectrum)")
+        self.tabs.setTabToolTip(2, "session 内 shot を 10 発 Series ごとにブロック表示 (本家風)")
+        self.tabs.setTabToolTip(3, "全機能の説明書")
+        self.tabs.setTabToolTip(4, "動作 / 閾値 / レイアウト / 心拍 / エクスポート")
 
         self.poller: PollerThread | None = None
         self._session_cache: dict = {}  # (sid, scope) -> list[shot]
@@ -4151,7 +4556,7 @@ class MainWindow(QMainWindow):
         self.hr_bridge = HeartRateBridge()
         self.hr_bridge.data_received.connect(self._on_hr_data)
         self.hr_bridge.status_changed.connect(self._on_hr_status)
-        self.shot_list.reload()
+        # shot_list の初期 reload はまだしない (current_session_id が決まってから set_session 経由で)
         self.sessions_tab.reload(self.db_path, self._hr_at_shot)
 
         # 起動順序: 先に最新 shot 付き trace を取得して current_session_id を確定 → そのあと selector を埋める
@@ -4179,6 +4584,29 @@ class MainWindow(QMainWindow):
         if SETTINGS.get("heart/auto_start") and SETTINGS.get("heart/mode") != "off":
             self._toggle_hr()
 
+    # ----- キーボードショートカット ハンドラ -----
+
+    def _switch_tab(self, idx: int):
+        if 0 <= idx < self.tabs.count():
+            self.tabs.setCurrentIndex(idx)
+
+    def _next_shot(self):
+        """shot list の現在選択を下に。Dashboard が連動更新。"""
+        cur = self.shot_list.currentRow()
+        if cur < self.shot_list.count() - 1:
+            self.shot_list.setCurrentRow(cur + 1)
+
+    def _prev_shot(self):
+        cur = self.shot_list.currentRow()
+        if cur > 0:
+            self.shot_list.setCurrentRow(cur - 1)
+
+    def _reload_all(self):
+        self.shot_list.reload()
+        self._reload_session_list()
+        self.sessions_tab.reload(self.db_path, self._hr_at_shot)
+        self.status.showMessage("reloaded")
+
     def _toggle_live(self):
         if self.poller is None:
             interval = SETTINGS.get("behavior/polling_interval_s")
@@ -4186,14 +4614,14 @@ class MainWindow(QMainWindow):
             self.poller.new_trace.connect(self._on_new_trace)
             self.poller.active_session_changed.connect(self._on_active_session_changed)
             self.poller.start()
-            self.start_btn.setText("Live Stop")
-            self.status.showMessage("Live polling started")
+            self.start_btn.setText("Live 停止")
+            self.status.showMessage("Live 監視を開始しました")
         else:
             self.poller.stop()
             self.poller.wait(2000)
             self.poller = None
-            self.start_btn.setText("Live Start")
-            self.status.showMessage("Live polling stopped")
+            self.start_btn.setText("Live 開始")
+            self.status.showMessage("Live 監視を停止しました")
 
     def _reload_session_list(self):
         """sessions テーブルから全セッションを読み込んで session_selector に反映。"""
@@ -4303,15 +4731,19 @@ class MainWindow(QMainWindow):
             self._apply_trace(self._current_trace_dict)
 
     def _on_layout_changed(self):
-        """Settings タブから layout 変更が来たとき"""
-        # ダッシュボードのグラフ枠を再構築
+        """Settings タブから layout 変更が来たとき、Dashboard を再構築。"""
+        # 主役 KPI 4 枠を再構築 (中身の指標が変わった可能性)
+        self.dashboard._rebuild_hero_row()
+        # グラフ枠を再構築
         rows = SETTINGS.get("layout/dashboard_graph_rows")
         cols = SETTINGS.get("layout/dashboard_graph_cols")
         self.dashboard.rebuild_graphs(rows, cols)
         # 表示要素の可視性
-        self.dashboard.hero_timing[0].setVisible(SETTINGS.get("layout/show_hero_cards"))
-        self.dashboard.hero_r95[0].setVisible(SETTINGS.get("layout/show_hero_cards"))
+        self.dashboard._hero_row_widget.setVisible(SETTINGS.get("layout/show_hero_cards"))
+        self.dashboard.mini_target.setVisible(SETTINGS.get("layout/show_mini_target"))
         self.dashboard.metrics_table.setVisible(SETTINGS.get("layout/show_metrics_table"))
+        self.dashboard.feedback_label.setVisible(SETTINGS.get("layout/show_feedback"))
+        self.dashboard._graphs_widget.setVisible(SETTINGS.get("layout/show_graphs"))
         # shot list 表示切替
         show_list = SETTINGS.get("layout/show_shot_list")
         if show_list and self.shot_list.parent() is None:
@@ -4339,15 +4771,15 @@ class MainWindow(QMainWindow):
                 mode = "ble"
             addr = SETTINGS.get("heart/device_address") or ""
             self.hr_bridge.start(mode, addr)
-            self.hr_btn.setText("HR Stop")
-            self.status.showMessage(f"heart rate source: {mode}")
+            self.hr_btn.setText("心拍 切断")
+            self.status.showMessage(f"心拍ソース: {mode}")
         else:
             self.hr_bridge.stop()
-            self.hr_btn.setText("HR Start")
+            self.hr_btn.setText("心拍 接続")
             self._hr_current = None
             self._rmssd_current = None
-            self.hr_label.setText("HR: —    RMSSD: —")
-            self.status.showMessage("heart rate stopped")
+            self.hr_label.setText("心拍: —    HRV: —")
+            self.status.showMessage("心拍受信を停止")
 
     def _on_hr_data(self, d: dict):
         ts = d.get("timestamp", time.time())
@@ -4364,7 +4796,7 @@ class MainWindow(QMainWindow):
         self._rmssd_current = rmssd_val
         # ToolBar 更新
         rm_text = f"{rmssd_val:.0f}ms" if rmssd_val is not None else "—"
-        self.hr_label.setText(f"HR: {hr if hr is not None else '—'}    RMSSD: {rm_text}")
+        self.hr_label.setText(f"心拍: {hr if hr is not None else '—'}    HRV: {rm_text}")
 
     def _on_hr_status(self, s: str):
         self.status.showMessage(f"[HR] {s}")
@@ -4541,7 +4973,6 @@ class MainWindow(QMainWindow):
     def _update_session_views(self, sid: int):
         if sid is None:
             return
-        # 現セッションの shot 一覧は常に "session" スコープで取得 (Shots/Drift タブはこれを使う)
         key = (sid, "session")
         if key not in self._session_cache:
             try:
@@ -4552,6 +4983,8 @@ class MainWindow(QMainWindow):
                 self.status.showMessage(f"session shots load fail: {e}")
                 return
         self._current_session_id = sid
+        # 左 shot 一覧を現 session に切替
+        self.shot_list.set_session(sid)
         self.shots_tab.update_session(self._session_cache[key], db_path=self.db_path)
         self.drift.update_session(self._session_cache[key])
 

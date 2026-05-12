@@ -4,7 +4,7 @@
 PYTHON ?= /opt/homebrew/bin/python3.10
 DB     ?= $(HOME)/Library/Application Support/SCATT Electronics/Scatt Expert/storage.dat
 
-.PHONY: help gui watch watch-full check install clean concurrency-test ble-scan app app-clean app-sign
+.PHONY: help gui watch watch-full check install clean concurrency-test ble-scan app app-clean app-sign icon
 
 help:
 	@echo "SCATT データ解析ツール"
@@ -57,7 +57,7 @@ ble-scan:
 	@$(PYTHON) scatt_ble_scan.py
 
 # ----- 配布 (.app) -----
-app: app-clean
+app: app-clean icon
 	$(PYTHON) -m pip install --user py2app
 	$(PYTHON) setup_app.py py2app
 	@echo ""
@@ -73,6 +73,9 @@ app-sign:
 app-clean:
 	rm -rf build dist
 	rm -f *.egg-info
+
+icon:
+	$(PYTHON) make_icon.py
 
 clean:
 	rm -rf __pycache__

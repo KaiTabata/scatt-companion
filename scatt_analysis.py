@@ -116,7 +116,7 @@ def spectrum(signal: np.ndarray, sample_rate: float,
 
 def tremor_band(freq: np.ndarray, mag: np.ndarray,
                 low: float = 8.0, high: float = 12.0) -> float:
-    """指定帯域のパワー合計を返す(振戦帯域のエネルギー)。"""
+    """指定帯域のパワー合計を返す(手のふるえ帯のエネルギー)。"""
     if len(freq) == 0:
         return 0.0
     mask = (freq >= low) & (freq <= high)
@@ -125,7 +125,22 @@ def tremor_band(freq: np.ndarray, mag: np.ndarray,
 
 def breathing_band(freq: np.ndarray, mag: np.ndarray,
                    low: float = 0.15, high: float = 0.5) -> float:
-    """呼吸帯域のパワー合計(0.15-0.5 Hz)。"""
+    """呼吸帯域のパワー合計(0.15-0.5 Hz)。伏射では息止めで小さくなる。"""
+    return tremor_band(freq, mag, low, high)
+
+
+def heart_band(freq: np.ndarray, mag: np.ndarray,
+               low: float = 0.8, high: float = 2.0) -> float:
+    """心拍由来ゆれ帯域のパワー (0.8-2 Hz、50-120 bpm 相当)。
+
+    伏射の息止め中は呼吸の影響が消え、心拍の脈動がサイトに最も強く出る。
+    """
+    return tremor_band(freq, mag, low, high)
+
+
+def total_power(freq: np.ndarray, mag: np.ndarray,
+                low: float = 0.1, high: float = 30.0) -> float:
+    """指定帯域全体のエネルギー合計 (= サイトのゆれ総量)。"""
     return tremor_band(freq, mag, low, high)
 
 
@@ -515,5 +530,7 @@ def summarize(t: TraceArrays) -> dict:
         "nine_c_05s": ten_a_percent(t, 0.5, 13.2),
         "tremor_power_pre": tremor_band(freq, mag),
         "breathing_power_pre": breathing_band(freq, mag),
+        "heart_band_power_pre": heart_band(freq, mag),
+        "total_power_pre": total_power(freq, mag),
         "spectrum_peak_hz": float(freq[int(np.argmax(mag))]) if len(mag) > 0 else 0.0,
     }

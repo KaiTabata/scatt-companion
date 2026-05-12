@@ -25,7 +25,7 @@ DATA_FILES = [
 ]
 OPTIONS = {
     "argv_emulation": False,
-    "iconfile": None,  # 後で .icns を作る
+    "iconfile": "assets/icon.icns",
     "plist": {
         "CFBundleName": APP_NAME,
         "CFBundleDisplayName": APP_NAME,
