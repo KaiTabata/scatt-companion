@@ -55,6 +55,7 @@ import scatt_backup as BK
 import scatt_target as T
 import scatt_update as UPD
 import scatt_profile as PR
+import scatt_home as HOME
 
 VERSION = "0.3.0"
 
@@ -134,6 +135,9 @@ class S:
         # 射手 Profile
         "profiles/list": "",          # JSON string: [{id, name, db}, ...]
         "profiles/current": "default",
+        # ホーム画面 (Welcome ダイアログ)
+        "home/show_on_startup": "auto",  # auto | always | never
+        "home/seen": False,
     }
 
     def __init__(self):
@@ -4090,6 +4094,19 @@ class SettingsTab(QWidget):
             "公開された JSON manifest URL を指定すると「更新を確認」ボタンが機能します。"
         )
         form_g.addRow("更新確認 URL", self.le_update_url)
+        # ホーム画面表示
+        self.cb_home_mode = QComboBox()
+        self.cb_home_mode.addItem("自動 (推奨)", "auto")
+        self.cb_home_mode.addItem("毎回表示", "always")
+        self.cb_home_mode.addItem("表示しない", "never")
+        cur_home = SETTINGS.get("home/show_on_startup") or "auto"
+        idx = self.cb_home_mode.findData(cur_home)
+        if idx >= 0:
+            self.cb_home_mode.setCurrentIndex(idx)
+        self.cb_home_mode.setToolTip(
+            "起動時に射手/種目選択画面を出すか。自動 = 複数射手 or 初回のみ表示。"
+        )
+        form_g.addRow("起動時のホーム画面", self.cb_home_mode)
         # 射撃種目
         self.cb_discipline = QComboBox()
         for k, d in T.DISCIPLINES.items():
@@ -4485,6 +4502,8 @@ class SettingsTab(QWidget):
         SETTINGS.set("behavior/caffeinate", self.cb_caffeine.isChecked())
         # 更新確認 URL
         SETTINGS.set("update/manifest_url", self.le_update_url.text().strip())
+        # ホーム画面モード
+        SETTINGS.set("home/show_on_startup", self.cb_home_mode.currentData())
         # 射撃種目 (再起動で反映)
         new_disc = self.cb_discipline.currentData()
         cur_disc = SETTINGS.get("discipline") or "rifle_50m"
@@ -5719,6 +5738,9 @@ def main():
     pal.setColor(QPalette.ColorRole.Button, C.PANEL)
     pal.setColor(QPalette.ColorRole.ButtonText, C.FG)
     app.setPalette(pal)
+
+    # ホーム画面 (条件付き)。受け入れたら profile/discipline が反映される
+    HOME.show_if_needed(None, PROFILES, T, SETTINGS, args.db)
 
     w = MainWindow(args.db, auto_live=auto_live, initial_trace=args.trace)
     if on_top:
