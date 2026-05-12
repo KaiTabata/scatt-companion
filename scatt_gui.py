@@ -15,6 +15,7 @@
 """
 
 from __future__ import annotations
+from typing import Optional
 
 import argparse
 import atexit
@@ -47,6 +48,7 @@ import scatt_heart as H
 import scatt_storage as ST
 import scatt_feedback as FB
 import scatt_export as EX
+import scatt_pdf as PDF
 
 
 DEFAULT_DB = os.path.expanduser(
@@ -1900,9 +1902,38 @@ class SeriesPanel(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         body.addWidget(self.table, stretch=1)
-        self.shot_ids_by_row: dict[int, int] = {}  # row → shot_id
+        self.shot_ids_by_row: dict[int, int] = {}
         self.on_select = None
+        self.on_toggle_hidden = None
         self.table.itemSelectionChanged.connect(self._on_select)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_context_menu)
+
+    def _on_context_menu(self, pos):
+        from PyQt6.QtWidgets import QMenu
+        item = self.table.itemAt(pos)
+        if item is None:
+            return
+        row = item.row()
+        shot_id = self.shot_ids_by_row.get(row)
+        if shot_id is None:
+            return
+        menu = QMenu(self)
+        act_hide = menu.addAction("集計から除外 / 復帰")
+        act_dash = menu.addAction("Dashboard で開く")
+        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if chosen == act_hide and self.on_toggle_hidden:
+            self.on_toggle_hidden(shot_id)
+        elif chosen == act_dash and self.on_select:
+            # 該当 shot の trace_id を解決
+            for r, s_id in self.shot_ids_by_row.items():
+                if s_id == shot_id:
+                    val = self.table.item(r, 0)
+                    if val:
+                        tid = val.data(Qt.ItemDataRole.UserRole)
+                        if tid is not None:
+                            self.on_select(shot_id, r)
+                    break
 
     def _on_select(self):
         row = self.table.currentRow()
@@ -1910,7 +1941,8 @@ class SeriesPanel(QWidget):
             self.on_select(self.shot_ids_by_row[row], row)
 
     def update_series(self, series_no: int, series_shots: list[dict],
-                      threshold_mm: float = 200.0):
+                      threshold_mm: float = 200.0,
+                      hr_at_shot: Optional[dict] = None):
         import datetime
         self.header.setText(
             f"Series {series_no}   ({len(series_shots)} shots)"
@@ -1925,13 +1957,16 @@ class SeriesPanel(QWidget):
         for r in range(nrows):
             self.table.setRowHeight(r, 18)
         # 各 shot 行
+        hr_at_shot = hr_at_shot or {}
         for pos, s in enumerate(series_shots):
             summ = s.get("summary") or {}
             stab = {st["window_s"]: st for st in (summ.get("stability") or [])}
             def get_r95(w): return stab.get(w, {}).get("r95")
             def pct(k): return (summ.get(k) or {}).get("percent")
             t_str = datetime.datetime.fromtimestamp(s["timer_ms"] / 1000).strftime("%H:%M:%S")
+            is_hidden = bool((hr_at_shot.get(s["shot_id"]) or {}).get("hidden"))
             flags = []
+            if is_hidden: flags.append("除外")
             if s.get("match_shot"): flags.append("M")
             if s.get("favorite"): flags.append("★")
             if s.get("missed"): flags.append("X")
@@ -1972,6 +2007,10 @@ class SeriesPanel(QWidget):
                         pass
                 if c == 2 and dist is not None and dist >= threshold_mm:
                     item.setBackground(QBrush(QColor(255, 230, 230)))
+                # 非表示 (集計除外) は淡色 + イタリック
+                if is_hidden:
+                    item.setForeground(QBrush(QColor(150, 150, 155)))
+                    f = item.font(); f.setItalic(True); item.setFont(f)
                 self.table.setItem(pos, c, item)
             self.shot_ids_by_row[pos] = s["shot_id"]
 
@@ -2048,6 +2087,7 @@ class ShotsTab(QWidget):
         self.db_path = None
         self._row_to_shot_id: dict[int, int] = {}
         self._suspicious_shot_ids: set[int] = set()
+        self._hr_at_shot_ref = None  # MainWindow から callable で渡される
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 8)
@@ -2075,6 +2115,10 @@ class ShotsTab(QWidget):
         self.del_suspicious_btn = QPushButton("異常 shot を一括削除")
         self.del_suspicious_btn.clicked.connect(self._delete_suspicious)
         tb.addWidget(self.del_suspicious_btn)
+
+        self.pdf_btn = QPushButton("PDF 出力 (現セッション)")
+        self.pdf_btn.clicked.connect(self._export_pdf)
+        tb.addWidget(self.pdf_btn)
 
         outer.addLayout(tb)
 
@@ -2142,7 +2186,9 @@ class ShotsTab(QWidget):
             series_shots = session_shots[start:end]
             panel = SeriesPanel()
             panel.on_select = self._on_series_shot_clicked
-            panel.update_series(series_no, series_shots, threshold_mm=threshold)
+            panel.on_toggle_hidden = self.toggle_shot_hidden
+            panel.update_series(series_no, series_shots, threshold_mm=threshold,
+                                hr_at_shot=self._hr_at_shot_ref() if self._hr_at_shot_ref else None)
             self._series_layout.addWidget(panel)
             self.series_panels.append(panel)
             # 異常 shot を集計
@@ -2171,10 +2217,88 @@ class ShotsTab(QWidget):
                 self.on_shot_selected(s["trace_id"])
                 return
 
+    def toggle_shot_hidden(self, shot_id: int):
+        """shot の hidden フラグを切替えて、本タブと外部に通知。"""
+        try:
+            # 現状を確認
+            extras = ST.load_all_extras()
+            cur_hidden = bool((extras.get(shot_id) or {}).get("hidden"))
+            ST.set_shot_hidden(shot_id, not cur_hidden)
+        except Exception as e:
+            QMessageBox.warning(self, "失敗", f"hidden 切替えに失敗: {e}")
+            return
+        if self.on_delete_committed:
+            self.on_delete_committed()
+
     def _reload_panels(self):
         """閾値変更時に再描画。"""
         if self._session_shots_cache:
             self.update_session(self._session_shots_cache, db_path=self.db_path)
+
+    def _export_pdf(self):
+        """現セッションを PDF 出力。集計除外 (hidden) shot は含めない。"""
+        if not self._session_shots_cache:
+            QMessageBox.information(self, "PDF 出力", "現セッションに shot がありません。")
+            return
+        hr_map = self._hr_at_shot_ref() if self._hr_at_shot_ref else {}
+        # hidden を除外して PDF へ渡す
+        visible = [s for s in self._session_shots_cache
+                   if not (hr_map.get(s["shot_id"]) or {}).get("hidden")]
+        if not visible:
+            QMessageBox.information(self, "PDF 出力", "全 shot が集計除外になっています。")
+            return
+        # メタ情報を集める
+        sid = visible[0].get("trace_id")  # fallback、後で session_id 推定
+        # MainWindow から session_id を伝えるルートが無いので、shots 経由で取得
+        try:
+            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=2.0)
+            row = conn.execute(
+                "SELECT session_id FROM traces WHERE trace_id = ?",
+                (visible[0]["trace_id"],),
+            ).fetchone()
+            session_id = row[0] if row else None
+            meta = {}
+            if session_id is not None:
+                r = conn.execute(
+                    "SELECT distance, caliber, position, sample_rate "
+                    "FROM sessions WHERE session_id = ?", (session_id,)
+                ).fetchone()
+                if r:
+                    meta = {
+                        "session_id": session_id,
+                        "distance": r[0], "caliber": r[1],
+                        "position": r[2], "sample_rate": r[3],
+                        "position_name": POSITION_NAMES.get(r[2], f"pos{r[2]}"),
+                    }
+            conn.close()
+        except Exception as e:
+            QMessageBox.warning(self, "失敗", str(e))
+            return
+        # HR 補完
+        for s in visible:
+            hr_info = hr_map.get(s["shot_id"]) or {}
+            s["hr_at_fire"] = hr_info.get("hr")
+            s["rmssd_30s"] = hr_info.get("rmssd")
+        # 出力先選択
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "セッション PDF を保存",
+            f"scatt_session_{session_id}.pdf", "PDF (*.pdf)"
+        )
+        if not path:
+            return
+        try:
+            # session feedback も含める
+            fb = FB.session_feedback(visible)
+            PDF.export_session_pdf(path, meta, visible, feedback_text=fb)
+            QMessageBox.information(
+                self, "PDF 出力完了",
+                f"出力先: {path}\n含まれた shot: {len(visible)} 件"
+                + (f"\n除外された shot: {len(self._session_shots_cache) - len(visible)} 件"
+                   if len(visible) < len(self._session_shots_cache) else "")
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "PDF 出力失敗", str(e))
 
     # ↓ 旧 1 テーブル方式のコードは Series ブロック化により削除済み
     def _DELETED_LEGACY(self):
@@ -3491,9 +3615,11 @@ class SessionsTab(QWidget):
         if sid is None:
             return
         meta = self._meta.get(sid, {})
-        shots = self._all_shots.get(sid, [])
+        all_shots = self._all_shots.get(sid, [])
+        # hidden は extra.db の hr_at_shot に既に hidden flag が入ってる
+        shots = [s for s in all_shots if not s.get("hidden")]
         sr = meta.get("sample_rate", 120) or 120
-        # 全サブタブを更新 (session 単位)
+        # 全サブタブを更新 (集計には hidden を除外)
         self.detail.update_session(sid, meta, shots)
         # サブタブはセッション最新 shot trace をベースに描画 (代表値として)
         latest_samples = None
@@ -3552,11 +3678,12 @@ class SessionsTab(QWidget):
                 date_str = datetime.datetime.fromtimestamp(last_t / 1000).strftime("%m-%d %H:%M")
             # session の shot を取得して集計
             session_shots = fetch_session_shots(conn, sid)
-            # HR を埋め込み(in-memory)
+            # HR を埋め込み(in-memory) + hidden フラグも引き継ぎ
             for s in session_shots:
                 hr_info = hr_at_shot.get(s["shot_id"]) or {}
                 s["hr_at_fire"] = hr_info.get("hr")
                 s["rmssd_30s"] = hr_info.get("rmssd")
+                s["hidden"] = bool(hr_info.get("hidden"))
             # キャッシュ
             self._all_shots[sid] = session_shots
             self._meta[sid] = {
@@ -4381,6 +4508,8 @@ class MainWindow(QMainWindow):
         self.shots_tab = ShotsTab()
         self.shots_tab.on_shot_selected = self._on_shot_selected
         self.shots_tab.on_delete_committed = self._on_delete_committed
+        # SeriesPanel が hidden 表示用に hr_at_shot を参照できるように
+        self.shots_tab._hr_at_shot_ref = lambda: self._hr_at_shot
         # Target タブは廃止、Dashboard の mini_target を参照
         self.target = self.dashboard.mini_target
         self.help_tab = HelpTab()
@@ -4948,8 +5077,12 @@ class MainWindow(QMainWindow):
             s["hr_at_fire"] = hr_info.get("hr")
             s["rmssd_30s"] = hr_info.get("rmssd")
         cur_shot_id = shots[0]["shot_id"] if shots else None
-        compare_set = [s for s in self._session_cache[cache_key]
-                       if s["shot_id"] != cur_shot_id]
+        # hidden=True の shot は z-score 比較から除外
+        compare_set = [
+            s for s in self._session_cache[cache_key]
+            if s["shot_id"] != cur_shot_id
+            and not (self._hr_at_shot.get(s["shot_id"]) or {}).get("hidden")
+        ]
         self.dashboard.update_trace(samples, shots, sr, session_shots=compare_set)
         self.spectrum.update_trace(samples, shots, sr)
         # Recoil タブはセッション単位 (現セッションの全 shot で集計、現在 shot は graph 用に渡す)

@@ -35,7 +35,10 @@ DEFAULT_EXTRA_DB = os.path.expanduser(
 
 
 def ensure_db(path: str = DEFAULT_EXTRA_DB) -> str:
-    """DB ファイルとテーブルを作成 (なければ)。返り値: 実 path。"""
+    """DB ファイルとテーブルを作成 (なければ)。返り値: 実 path。
+
+    既存 DB に新規カラム (hidden) があれば ALTER TABLE で追加する。
+    """
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, timeout=5.0)
     try:
@@ -49,10 +52,15 @@ def ensure_db(path: str = DEFAULT_EXTRA_DB) -> str:
                 imu_pitch   REAL,
                 imu_roll    REAL,
                 note        TEXT,
+                hidden      INTEGER DEFAULT 0,
                 created_at  INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000),
                 updated_at  INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000)
             )
         """)
+        # 既存テーブルに hidden 列が無い場合の migration
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(shot_extras)").fetchall()]
+        if "hidden" not in cols:
+            conn.execute("ALTER TABLE shot_extras ADD COLUMN hidden INTEGER DEFAULT 0")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_extras_updated "
             "ON shot_extras(updated_at)"
@@ -61,6 +69,26 @@ def ensure_db(path: str = DEFAULT_EXTRA_DB) -> str:
     finally:
         conn.close()
     return path
+
+
+def set_shot_hidden(shot_id: int, hidden: bool, path: str = DEFAULT_EXTRA_DB):
+    """shot を集計から除外 (hidden=1) / 復帰 (hidden=0)。"""
+    conn = sqlite3.connect(path, timeout=5.0)
+    try:
+        conn.execute("PRAGMA busy_timeout = 5000;")
+        conn.execute(
+            """
+            INSERT INTO shot_extras (shot_id, hidden)
+            VALUES (?, ?)
+            ON CONFLICT(shot_id) DO UPDATE SET
+              hidden = excluded.hidden,
+              updated_at = CAST(strftime('%s','now') AS INTEGER) * 1000
+            """,
+            (shot_id, 1 if hidden else 0),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def save_shot_extras(
@@ -106,11 +134,16 @@ def load_all_extras(path: str = DEFAULT_EXTRA_DB) -> dict[int, dict]:
     """全 shot_extras を {shot_id: {...}} で返す。DB 未作成なら空 dict。"""
     if not os.path.exists(path):
         return {}
+    # 念のため migration 確認
+    try:
+        ensure_db(path)
+    except Exception:
+        pass
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2.0)
     try:
         out: dict[int, dict] = {}
         for row in conn.execute(
-            "SELECT shot_id, hr_at_fire, rmssd_30s, imu_yaw, imu_pitch, imu_roll, note "
+            "SELECT shot_id, hr_at_fire, rmssd_30s, imu_yaw, imu_pitch, imu_roll, note, hidden "
             "FROM shot_extras"
         ):
             sid = row[0]
@@ -121,6 +154,7 @@ def load_all_extras(path: str = DEFAULT_EXTRA_DB) -> dict[int, dict]:
                 "imu_pitch": row[4],
                 "imu_roll": row[5],
                 "note": row[6],
+                "hidden": bool(row[7]) if row[7] is not None else False,
             }
         return out
     finally:
