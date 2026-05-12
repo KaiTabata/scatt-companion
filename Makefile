@@ -4,7 +4,7 @@
 PYTHON ?= /opt/homebrew/bin/python3.10
 DB     ?= $(HOME)/Library/Application Support/SCATT Electronics/Scatt Expert/storage.dat
 
-.PHONY: help gui watch watch-full check install clean concurrency-test ble-scan app app-clean app-sign icon
+.PHONY: help gui watch watch-full check install clean concurrency-test ble-scan app app-clean app-sign icon dmg
 
 help:
 	@echo "SCATT データ解析ツール"
@@ -17,6 +17,7 @@ help:
 	@echo ""
 	@echo "  make app                .app バンドルをビルド (dist/SCATT Prone Analyzer.app)"
 	@echo "  make app-sign           ビルド後の .app に ad-hoc 署名"
+	@echo "  make dmg                .app を DMG にまとめる (dist/scatt-prone-analyzer-VER.dmg)"
 	@echo "  make app-clean          build/ dist/ を削除"
 	@echo "  make check              環境チェック (Python・依存・DB の存在)"
 	@echo "  make install            依存パッケージ (PyQt6, numpy) をインストール"
@@ -76,6 +77,19 @@ app-clean:
 
 icon:
 	$(PYTHON) make_icon.py
+
+# .app から DMG を生成 (ad-hoc 署名前提)
+VERSION := $(shell $(PYTHON) -c "import re; v=re.search(r'version *= *\"([^\"]+)\"', open('pyproject.toml').read()); print(v.group(1) if v else 'dev')")
+dmg:
+	@test -d "dist/SCATT Prone Analyzer.app" || (echo "先に make app を実行してください"; exit 1)
+	rm -f dist/scatt-prone-analyzer-*.dmg
+	hdiutil create -volname "SCATT Prone Analyzer" \
+		-srcfolder "dist/SCATT Prone Analyzer.app" \
+		-ov -format UDZO \
+		"dist/scatt-prone-analyzer-$(VERSION).dmg"
+	@echo ""
+	@echo "DMG 完成: dist/scatt-prone-analyzer-$(VERSION).dmg"
+	@ls -la "dist/scatt-prone-analyzer-$(VERSION).dmg"
 
 clean:
 	rm -rf __pycache__

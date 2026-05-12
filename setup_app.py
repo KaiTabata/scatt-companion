@@ -30,8 +30,8 @@ OPTIONS = {
         "CFBundleName": APP_NAME,
         "CFBundleDisplayName": APP_NAME,
         "CFBundleIdentifier": "com.scatt-prone.analyzer",
-        "CFBundleVersion": "0.1.0",
-        "CFBundleShortVersionString": "0.1.0",
+        "CFBundleVersion": "0.2.0",
+        "CFBundleShortVersionString": "0.2.0",
         "NSHumanReadableCopyright": "Apache License 2.0",
         # macOS 権限の説明
         "NSBluetoothAlwaysUsageDescription":
