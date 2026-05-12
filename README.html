@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>SCATT 解析ツール — 使い方</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --fg: #222;
+    --muted: #666;
+    --accent: #2363c8;
+    --code-bg: #f0f0f3;
+    --border: #e0e0e4;
+    --note-bg: #fff8e6;
+    --note-border: #f0c060;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Helvetica Neue", sans-serif;
+    line-height: 1.7;
+    color: var(--fg);
+    background: var(--bg);
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+    font-size: 15px;
+  }
+  h1 {
+    font-size: 28px;
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 8px;
+    margin-top: 0;
+  }
+  h2 {
+    font-size: 22px;
+    margin-top: 36px;
+    border-left: 4px solid var(--accent);
+    padding-left: 10px;
+  }
+  h3 {
+    font-size: 17px;
+    color: #333;
+    margin-top: 24px;
+  }
+  p { margin: 8px 0; }
+  code {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.92em;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 12px 14px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  pre code { background: transparent; padding: 0; }
+  table {
+    border-collapse: collapse;
+    margin: 12px 0;
+    width: 100%;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+    font-size: 14px;
+  }
+  th { background: #eaeaef; }
+  ul, ol { padding-left: 24px; }
+  li { margin: 4px 0; }
+  .note {
+    background: var(--note-bg);
+    border-left: 4px solid var(--note-border);
+    padding: 10px 14px;
+    margin: 14px 0;
+    border-radius: 4px;
+  }
+  .toc {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 18px;
+    margin-bottom: 24px;
+  }
+  .toc h3 { margin-top: 0; }
+  .toc ul { margin: 4px 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .kbd {
+    display: inline-block;
+    background: #fff;
+    border: 1px solid #c0c0c4;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 0.85em;
+  }
+  .file {
+    font-family: "SF Mono", Menlo, monospace;
+    color: var(--accent);
+  }
+  hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+  .small { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h1>SCATT 解析ツール 使い方</h1>
+
+<p class="small">SCATT Expert の射撃データをリアルタイムに別画面で見たり、過去 trace を分析したりするローカルツール。<br>
+データは外部送信せず、すべて自分の Mac 内で完結する。</p>
+
+<div class="toc">
+  <h3>目次</h3>
+  <ul>
+    <li><a href="#quick">クイックスタート (3 ステップ)</a></li>
+    <li><a href="#what">何ができるか</a></li>
+    <li><a href="#files">ファイル構成</a></li>
+    <li><a href="#launch">起動方法</a></li>
+    <li><a href="#gui">GUI の使い方</a></li>
+    <li><a href="#cli">コマンドラインで JSONL を流す (scatt-watch)</a></li>
+    <li><a href="#data">データ仕様(復号アルゴリズム)</a></li>
+    <li><a href="#concurrency">並行読み出し検証 (SCATT 起動中)</a></li>
+    <li><a href="#heartrate">心拍 (Apple Watch / 胸ベルト)</a></li>
+    <li><a href="#trouble">トラブルシュート</a></li>
+    <li><a href="#roadmap">今後の拡張候補</a></li>
+  </ul>
+</div>
+
+<h2 id="quick">クイックスタート (3 ステップ)</h2>
+
+<ol>
+  <li>SCATT Expert を起動して、いつも通り射撃を始める</li>
+  <li>Finder で <span class="file">scatt-gui.command</span> をダブルクリック</li>
+  <li>右側にターゲットと最新 trace が表示される。<strong>そのまま射撃を続けるだけで OK</strong>。新規 trace は自動で描画され、ウィンドウは最前面に固定される</li>
+</ol>
+
+<div class="note">
+  <strong>触らずに使える設計:</strong> 起動時から Live polling が自動で動き、常に最前面に表示、画面スリープも抑制される。途中で何か押す必要はない。終了したいときはウィンドウを閉じるだけ。
+</div>
+
+<hr>
+
+<h2 id="what">何ができるか</h2>
+
+<ul>
+  <li>SCATT Expert が保存した <code>trace.data</code> BLOB を完全復号(独自 XOR + qCompress を解読済み)</li>
+  <li>各サンプルから <strong>X 座標 (mm)</strong> / <strong>Y 座標 (mm)</strong> / <strong>Cant 角 (radian)</strong> を取得</li>
+  <li>リアルタイム表示: SCATT Expert で射撃中、新しい trace を自動でターゲット上に描画</li>
+  <li>レビュー: 過去 trace を左の一覧からクリックで再生</li>
+  <li><strong>本家 SCATT 互換指標</strong>: 10a / 10a-0.5 / 10b / 9c / S1 / S2 を主役表示</li>
+  <li><strong>本家にない補助指標</strong>: 振戦/呼吸 FFT、Pre-trigger 安定度、Hold/Aim/Trigger 分解、反動詳細(peak / settle time / 方向)、心拍 / HRV、Approach パターン</li>
+  <li><strong>個人平均との比較</strong>: 過去 shot の μ±σ で z-score を計算、悪い順にソート + 色付け</li>
+  <li><strong>セッション横断レビュー</strong>: Sessions タブで全 session の集計を一覧</li>
+  <li><strong>BLE 心拍連携</strong>: Apple Watch + HeartCast や胸ベルトを Mac で直接受信</li>
+  <li><strong>誤反応 shot の自動検出・削除</strong>: 距離 200mm 以上を異常判定、SCATT 側 DB ごと削除</li>
+</ul>
+
+<h2 id="files">ファイル構成</h2>
+
+<table>
+  <tr><th>パス</th><th>役割</th></tr>
+  <tr><td class="file">scatt-gui.command</td><td>Finder ダブルクリック起動(GUI、Live モード自動 ON)</td></tr>
+  <tr><td class="file">scatt-watch.command</td><td>Finder ダブルクリック起動(ターミナルで JSONL 出力)</td></tr>
+  <tr><td class="file">scatt_gui.py</td><td>PyQt6 デスクトップ GUI 本体</td></tr>
+  <tr><td class="file">scatt_watch.py</td><td>CLI 監視スクリプト</td></tr>
+  <tr><td class="file">Makefile</td><td>ターミナル向けエイリアス(<code>make gui</code> 等)</td></tr>
+  <tr><td class="file">README.html</td><td>このドキュメント</td></tr>
+</table>
+
+<p>SCATT のデータ DB は次の場所:<br>
+<code>~/Library/Application Support/SCATT Electronics/Scatt Expert/storage.dat</code></p>
+
+<h2 id="launch">起動方法</h2>
+
+<h3>A. Finder からダブルクリック(推奨)</h3>
+<ol>
+  <li><span class="file">scatt-gui.command</span> をダブルクリック → 即座に Live モードで GUI 起動</li>
+  <li>初回のみ "開発元未確認" の警告が出る場合あり: Finder で右クリック → <strong>開く</strong> → ダイアログで再度 <strong>開く</strong></li>
+  <li>依存パッケージ (PyQt6, numpy) が無ければ初回自動インストール</li>
+</ol>
+
+<h3>B. ターミナルから make</h3>
+<pre><code>cd /Users/kaitabata/Documents/SCATT
+make help         # コマンド一覧
+make check        # 環境チェック
+make gui          # GUI 起動 (Live モード自動 ON)
+make watch        # 監視 JSONL (メタ情報のみ) を出力
+make watch-full   # 監視 JSONL (samples 含む) を出力
+make install      # 依存パッケージを pip でインストール
+</code></pre>
+
+<h3>C. 細かいオプション</h3>
+<pre><code># 起動時に Live モードを止めたい (レビュー専用)
+/opt/homebrew/bin/python3.10 scatt_gui.py --no-live
+
+# 特定の trace を初期表示
+/opt/homebrew/bin/python3.10 scatt_gui.py --trace 5
+
+# 最前面固定をやめる
+/opt/homebrew/bin/python3.10 scatt_gui.py     # (--top は付けない)
+
+# 画面スリープ抑制を切る
+/opt/homebrew/bin/python3.10 scatt_gui.py --no-caffeinate
+
+# 別の storage.dat を指定
+/opt/homebrew/bin/python3.10 scatt_gui.py --db /path/to/storage.dat
+</code></pre>
+
+<h2 id="gui">GUI の使い方</h2>
+
+<pre>
+┌─────────────────────────────────────────────────┐
+│ [Live Stop] [Reload List]                       │
+├──────────┬──────────────────────────────────────┤
+│ trace一覧 │   ターゲット + 軌跡                  │
+│ (左)      │   - 青線: 軌跡                       │
+│           │   - 赤丸: 軌跡の終点                 │
+│           │                                      │
+│           ├──────────────────────────────────────┤
+│           │ 計測パネル                            │
+│           │   session, trace_id, samples         │
+│           │   velocity (mean/max/last)           │
+│           │   Cant (deg, rad)                    │
+└──────────┴──────────────────────────────────────┘
+</pre>
+
+<ul>
+  <li><strong>左の trace 一覧</strong>: 過去 200 件、新しい順。クリックでリプレイ</li>
+  <li><strong>Live Start / Stop ボタン</strong>: 通常は起動時から自動で Start。停止したい時のみ操作</li>
+  <li><strong>ターゲット</strong>: ISSF 50m ライフル(.22 LR スモールボア)規格 — 外径 154.4mm、リング間 8mm、黒色 aiming mark 直径 112.4mm(4 リング以下を含む)、Inner 10 = 5.0mm 中心円(白破線)、番号 1〜9 を 12 時方向</li>
+  <li><strong>軌跡の赤丸</strong>: 直近サンプル位置(= trace の最終サンプル)</li>
+</ul>
+
+<h2 id="cli">コマンドラインで JSONL を流す (scatt-watch)</h2>
+
+<p>GUI を使わず、別ツールに繋ぎたい場合は <span class="file">scatt-watch.command</span> または <code>make watch</code> を使う。1 行 = 1 trace の JSON。</p>
+
+<pre><code>$ /opt/homebrew/bin/python3.10 scatt_watch.py --no-samples
+# watching from trace_id &gt; 935 (current max)
+{"trace_id":936,"session_id":4,"timer_ms":1778559500000,"n_samples":null,
+ "session":{"distance":50.0,"caliber":5.6,"sample_rate":120,...}}
+</code></pre>
+
+<p>サンプル配列まで含めたい場合は <code>--no-samples</code> を外す(出力が大きくなる)。jq でフィルタしたり、別プロセスに pipe して可視化に使える。</p>
+
+<h2 id="data">データ仕様(復号アルゴリズム)</h2>
+
+<h3>固定 XOR キー (16 バイト)</h3>
+<pre><code>e3 00 e9 00 34 85 1d 04 f0 95 c0 70 0e 1e b9 f3</code></pre>
+
+<h3>復号フロー</h3>
+<ol>
+  <li>BLOB の先頭 1 バイトが <code>0x01</code>(バージョンマーカー)であることを確認</li>
+  <li><code>out[i] = in[i] ^ in[i-1] ^ key[i % 16]</code>(CBC 風 XOR、初期 prev = 0)</li>
+  <li>結果の先頭 1 バイトを捨てる</li>
+  <li>続く 2 バイト = uint16 BE = qChecksum</li>
+  <li>残りを <code>qUncompress</code>(先頭 4B BE = 展開後サイズ、続きは zlib stream)</li>
+  <li>展開結果は QDataStream 形式、先頭 15 バイトのヘッダ + N × 12 バイトのサンプル</li>
+</ol>
+
+<h3>サンプル構造 (12 バイト)</h3>
+<table>
+  <tr><th>オフセット</th><th>型</th><th>意味</th></tr>
+  <tr><td>0..3</td><td>float32 BE</td><td>X 座標 (mm、ターゲット中心からの水平オフセット)</td></tr>
+  <tr><td>4..7</td><td>float32 BE</td><td>Y 座標 (mm、垂直オフセット、+ が上)</td></tr>
+  <tr><td>8..11</td><td>float32 BE</td><td>Cant 角(銃身ロール、radian)</td></tr>
+</table>
+
+<p class="small">サンプリングレートは <code>sessions.sample_rate</code> カラム(典型 120Hz)。</p>
+
+<h2 id="concurrency">並行読み出し検証 (SCATT 起動中)</h2>
+
+<p>本ツールは <code>storage.dat</code> を read-only で開き <code>PRAGMA busy_timeout</code> を設定するため、SCATT Expert 動作中でも基本的に並行読み取り可能。実機で問題ないか定量的に確認したい場合は <span class="file">scatt_concurrency_test.py</span> を使う。</p>
+
+<h3>手順</h3>
+<ol>
+  <li><strong>SCATT Expert を起動</strong>し、射撃シミュレーションまたは記録モードに入る</li>
+  <li>別ターミナルで以下を実行(デフォルト 60 秒計測):
+    <pre><code>cd /Users/kaitabata/Documents/SCATT
+make concurrency-test
+
+# または直接
+/opt/homebrew/bin/python3.10 scatt_concurrency_test.py
+</code></pre>
+  </li>
+  <li>SCATT 側で <strong>射撃 / トレース生成 / セッション切替などの操作</strong>を行う</li>
+  <li>60 秒経過 or <span class="kbd">Ctrl+C</span> で集計表示</li>
+</ol>
+
+<h3>計測内容と読み方</h3>
+<table>
+  <tr><th>項目</th><th>意味</th><th>合格目安</th></tr>
+  <tr><td>polls</td><td>0.1 秒間隔の SELECT 試行回数</td><td>— (時間 × 10)</td></tr>
+  <tr><td>new traces seen</td><td>計測中に検出された新規 trace_id 数</td><td>SCATT 側の動作回数と一致</td></tr>
+  <tr><td>busy errors</td><td>SQLITE_BUSY 発生数</td><td>0 が理想、polls の 1% 未満なら実用可</td></tr>
+  <tr><td>other errors</td><td>その他 SQLite エラー</td><td>0</td></tr>
+  <tr><td>query latency p50/p95/p99</td><td>SELECT の応答時間</td><td>p99 が数十 ms 以下なら GUI 体感問題なし</td></tr>
+  <tr><td>trace_id gap warning</td><td>取りこぼし or 内部削除の検出</td><td>無いことが望ましい</td></tr>
+</table>
+
+<h3>オプション</h3>
+<pre><code># 計測時間と頻度を変える
+/opt/homebrew/bin/python3.10 scatt_concurrency_test.py --duration 120 --interval 0.2
+
+# busy_timeout を伸ばす(SCATT 書き込みが長い場合)
+/opt/homebrew/bin/python3.10 scatt_concurrency_test.py --busy-ms 5000
+</code></pre>
+
+<h3>busy が出た場合の調整</h3>
+<ul>
+  <li><strong>polling 間隔を長く</strong>: <code>--interval 0.5</code> 以上(GUI/watch も同様に <code>--interval 0.5</code>)</li>
+  <li><strong>busy_timeout を大きく</strong>: <code>--busy-ms 5000</code></li>
+  <li><strong>SCATT 側の書き込みパターン確認</strong>: 大きな BLOB 書き込み中に長時間ロックされている場合あり</li>
+</ul>
+
+<div class="note">
+  <strong>ドライラン例:</strong> SCATT 未起動の状態で 3 秒走らせたところ、busy 0 / レイテンシ p99=0.4ms。書き込みが無ければレイテンシは負荷ゼロ。
+</div>
+
+<h2 id="trouble">トラブルシュート</h2>
+
+<h3>"開発元が未確認" で .command が開けない</h3>
+<p>Finder で右クリック → <strong>開く</strong> → ダイアログで再度 <strong>開く</strong>。</p>
+
+<h3>"db not found" と出る</h3>
+<p>SCATT Expert を一度起動し、何か trace を作ってから再実行。または <code>--db PATH</code> でパス指定。</p>
+
+<h3>"ModuleNotFoundError: No module named 'PyQt6'"</h3>
+<pre><code>make install</code></pre>
+<p>または別の Python を使っているなら <code>make gui PYTHON=/path/to/python3</code> で上書き。</p>
+
+<h3>Live で何も流れてこない</h3>
+<ul>
+  <li>SCATT Expert を起動して射撃中であることを確認</li>
+  <li><code>make watch</code> で別途 JSONL に流れるか確認</li>
+  <li><code>make check</code> で DB のパスが見えているか確認</li>
+</ul>
+
+<h2 id="heartrate">心拍 (Apple Watch / 胸ベルト)</h2>
+
+<p>本ソフトは BLE Heart Rate Profile (0x180D) で心拍を受信する。Mac とのペアリングは <b>不要</b>。デバイス側でブロードキャストを ON にするだけ。</p>
+
+<h3>Apple Watch + HeartCast の場合(検証済み構成)</h3>
+<ol>
+  <li>App Store で <b>HeartCast</b> を購入(Watch アプリ + iPhone コンパニオンアプリの両方が入る)</li>
+  <li>iPhone で HeartCast を起動 → Apple Watch との連携を許可</li>
+  <li>iPhone 側で <b>"Start broadcasting"</b> を押す<br>
+    <span class="small">※ iPhone 側がブロードキャスタになって、Mac は iPhone から心拍を受信する構成が安定。Watch から直接ではない。</span></li>
+  <li>Watch アプリで心拍計測が動いていることを確認(Workout モード推奨)</li>
+  <li>Mac 側のターミナルで <code>make ble-scan</code> 実行 → "★ Heart Rate" マークの行があれば成功</li>
+  <li>GUI を起動 → <b>ToolBar の "HR Start"</b> ボタンを押す → ライブ表示開始</li>
+</ol>
+
+<div class="note">
+  <b>iPhone を経由するメリット:</b> Watch 単体だとアプリ表示中しかブロードキャストできないが、iPhone を経由するとバックグラウンドでも安定して送信される。射撃中は Watch を見ない・iPhone も触らない、という運用に向く。
+</div>
+
+<h3>胸ベルト(Polar H10 / Wahoo TICKR 等)の場合</h3>
+<ol>
+  <li>胸ベルトを装着して動作中にする(緑 LED 点灯など)</li>
+  <li>Mac 側で <code>make ble-scan</code> → ベルトが見えれば OK</li>
+  <li>GUI で "HR Start"</li>
+</ol>
+
+<h3>確認用コマンド</h3>
+<pre><code># BLE 心拍デバイスを 10 秒スキャン
+make ble-scan
+</code></pre>
+
+<h3>macOS Bluetooth 権限</h3>
+<p>初回 <code>bleak</code> 実行時に macOS が <b>「Python が Bluetooth へのアクセスを求めています」</b>ダイアログを出す。許可しないと検出できない。あとから変更する場合は<br>
+<code>システム設定 → プライバシーとセキュリティ → Bluetooth</code> でターミナル/Python を許可。</p>
+
+<h3>表示・分析への活用</h3>
+<ul>
+  <li><b>ToolBar:</b> 現在 HR と直近 30 秒の RMSSD (HRV 指標) をライブ表示</li>
+  <li><b>Dashboard 指標表:</b> shot 受信時の HR、RMSSD を z-score 比較に含めて色付け</li>
+  <li><b>Heart rate over time グラフ:</b> ダッシュボードのグラフ枠で選択可能</li>
+  <li><b>Shots テーブル:</b> shot 単位の HR を一覧化(今後追加予定)</li>
+</ul>
+
+<div class="note">
+  <b>注意:</b> 心拍データは <b>本ソフトを起動してから観測した shot にのみ</b> 紐づく(SCATT 側の DB には心拍は保存されないため、過去 shot は HR 不明)。観測した shot が増えていくと μ±σ 比較が機能し始める。
+</div>
+
+<h2 id="roadmap">今後の拡張候補</h2>
+<ul>
+  <li>振戦・呼吸の FFT スペクトログラム(8-12Hz 生理振戦、0.2-0.5Hz 呼吸)</li>
+  <li>Pre-trigger 1/2/3 秒の安定度推移(R95、SD)</li>
+  <li>Hold / Aim / Trigger 自動分解(速度閾値ベース)</li>
+  <li>ショット間の重心ドリフト × Cant 解析</li>
+  <li>Apple Watch 心拍 (BLE Heart Rate Profile) の連携</li>
+  <li>銃身姿勢 IMU (yaw / pitch) 連携</li>
+  <li>過去ベストショットのゴースト軌跡</li>
+  <li>Claude API による自動コーチング所見生成</li>
+</ul>
+
+<hr>
+
+<p class="small">SCATT Expert はサードパーティ製品。本ツールはローカルに保存された自分の射撃データを <strong>読み取るだけ</strong> で、書き込みやネットワーク送信は行わない。<br>
+復号キーとアルゴリズムは SCATT Expert v20.05.31 (Qt 5.9.9, macOS x86_64) で確認。</p>
+
+</body>
+</html>

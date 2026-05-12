@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scatt-prone-analyzer"
+version = "0.1.0"
+description = "SCATT Expert 補助ツール — 伏射特化、本家にない指標と分析を提供"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+authors = [
+    { name = "SCATT Prone Analyzer contributors" },
+]
+keywords = ["scatt", "shooting", "prone", "rifle", "analyzer", "ble", "heart-rate"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Games/Entertainment :: Simulation",
+]
+dependencies = [
+    "PyQt6>=6.6",
+    "numpy>=1.24",
+    "pyqtgraph>=0.13",
+    "bleak>=0.21",
+]
+
+[project.optional-dependencies]
+build = [
+    "py2app>=0.28",
+]
+dev = [
+    "pytest>=7.0",
+    "black>=23.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/KaiTabata/scatt-analyzer"
+Issues = "https://github.com/KaiTabata/scatt-analyzer/issues"
+
+[project.scripts]
+scatt-gui = "scatt_gui:main"
+scatt-watch = "scatt_watch:main"
+
+[tool.setuptools]
+py-modules = [
+    "scatt_gui",
+    "scatt_watch",
+    "scatt_analysis",
+    "scatt_heart",
+    "scatt_storage",
+    "scatt_feedback",
+    "scatt_ble_scan",
+    "scatt_concurrency_test",
+]

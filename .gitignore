@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.claude/
+
+# Personal data / user settings
+*.dat
+extra.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Screenshots / scratch
+スクリーンショット*.png
+スクリーンショット*.jpg
+*.tmp
+
+# Output
+*.log
+
+# py2app build artifacts
+*.app
+dist-info/
+.eggs/
