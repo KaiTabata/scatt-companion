@@ -22,6 +22,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
 
+import scatt_target as T
+
 
 @dataclass
 class TraceArrays:
@@ -519,15 +521,14 @@ def summarize(t: TraceArrays) -> dict:
         "recovery": recovery_dispersion(t),
         "recoil": recoil_detailed(t),
         "steadiness": steadiness_score(t),
-        # SCATT 互換: 10a-1.0 / 10a-0.5 (どちらも 10-ring R≤5.2mm)
-        # 10b-1.0 / 10b-0.5 (inner-10 R≤2.5mm)
-        # 9c / 9d は 9-ring 系 (R≤13.2mm)
-        "ten_a_1s":   ten_a_percent(t, 1.0, 5.2),   # 本家 "10a"
-        "ten_a_05s":  ten_a_percent(t, 0.5, 5.2),   # 本家 "10a-0.5" (= 10a5 表記)
-        "ten_b_1s":   ten_a_percent(t, 1.0, 2.5),   # 本家 "10b" (inner-10)
-        "ten_b_05s":  ten_a_percent(t, 0.5, 2.5),
-        "nine_c_1s":  ten_a_percent(t, 1.0, 13.2),  # 本家 "9c"
-        "nine_c_05s": ten_a_percent(t, 0.5, 13.2),
+        # SCATT 互換: 10a / 10a-0.5 / 10b / 9c
+        # 半径は射撃種目 (50m ライフル / 10m エアライフル / 10m エアピストル) に応じて変動
+        "ten_a_1s":   ten_a_percent(t, 1.0, T.current().ring_10_radius_mm),
+        "ten_a_05s":  ten_a_percent(t, 0.5, T.current().ring_10_radius_mm),
+        "ten_b_1s":   ten_a_percent(t, 1.0, T.current().ring_inner_10_radius_mm),
+        "ten_b_05s":  ten_a_percent(t, 0.5, T.current().ring_inner_10_radius_mm),
+        "nine_c_1s":  ten_a_percent(t, 1.0, T.current().ring_9_radius_mm),
+        "nine_c_05s": ten_a_percent(t, 0.5, T.current().ring_9_radius_mm),
         "tremor_power_pre": tremor_band(freq, mag),
         "breathing_power_pre": breathing_band(freq, mag),
         "heart_band_power_pre": heart_band(freq, mag),

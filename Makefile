@@ -4,7 +4,7 @@
 PYTHON ?= /opt/homebrew/bin/python3.10
 DB     ?= $(HOME)/Library/Application Support/SCATT Electronics/Scatt Expert/storage.dat
 
-.PHONY: help gui watch watch-full check install clean concurrency-test ble-scan app app-clean app-sign icon dmg
+.PHONY: help gui watch watch-full check install clean concurrency-test ble-scan app app-clean app-sign icon dmg test
 
 help:
 	@echo "SCATT データ解析ツール"
@@ -21,6 +21,7 @@ help:
 	@echo "  make app-clean          build/ dist/ を削除"
 	@echo "  make check              環境チェック (Python・依存・DB の存在)"
 	@echo "  make install            依存パッケージ (PyQt6, numpy) をインストール"
+	@echo "  make test               pytest で単体テスト実行 (tests/)"
 	@echo "  make clean              __pycache__ を削除"
 	@echo ""
 	@echo "PYTHON=... DB=... で上書き可"
@@ -91,5 +92,9 @@ dmg:
 	@echo "DMG 完成: dist/scatt-prone-analyzer-$(VERSION).dmg"
 	@ls -la "dist/scatt-prone-analyzer-$(VERSION).dmg"
 
+test:
+	@$(PYTHON) -m pip install --user --quiet pytest
+	@$(PYTHON) -m pytest tests/ -v
+
 clean:
-	rm -rf __pycache__
+	rm -rf __pycache__ tests/__pycache__ .pytest_cache

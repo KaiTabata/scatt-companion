@@ -36,9 +36,10 @@ from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPalette,
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QFrame,
     QGraphicsPathItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QHeaderView,
-    QLabel, QListWidget, QMainWindow, QMessageBox, QPushButton, QScrollArea,
-    QSpinBox, QSplitter, QStatusBar, QTableWidget, QTableWidgetItem, QTabWidget,
-    QTextBrowser, QToolBar, QVBoxLayout, QGridLayout, QWidget,
+    QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox, QPushButton,
+    QScrollArea, QSpinBox, QSplitter, QStatusBar, QTableWidget,
+    QTableWidgetItem, QTabWidget, QTextBrowser, QToolBar, QVBoxLayout,
+    QGridLayout, QWidget,
 )
 
 # 自作分析モジュール
@@ -50,8 +51,12 @@ import scatt_feedback as FB
 import scatt_export as EX
 import scatt_pdf as PDF
 import scatt_logging as LOG
+import scatt_backup as BK
+import scatt_target as T
+import scatt_update as UPD
+import scatt_profile as PR
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 
 DEFAULT_DB = os.path.expanduser(
@@ -120,6 +125,15 @@ class S:
         "heart/mode": "off",            # off | ble | mock
         "heart/device_address": "",     # 空 = 自動スキャン
         "heart/auto_start": False,
+        # discipline (射撃種目)
+        # rifle_50m (default) | rifle_10m | pistol_10m
+        "discipline": "rifle_50m",
+        # 更新通知 (公開 manifest URL を取得して比較)
+        "update/manifest_url": "",
+        "update/auto_check": False,
+        # 射手 Profile
+        "profiles/list": "",          # JSON string: [{id, name, db}, ...]
+        "profiles/current": "default",
     }
 
     def __init__(self):
@@ -158,6 +172,11 @@ class S:
 
 
 SETTINGS = S()
+# 起動時に射撃種目を適用 (50m ライフル / 10m エアライフル / 10m エアピストル)
+T.set_current(SETTINGS.get("discipline") or "rifle_50m")
+# 射手 Profile (extra.db のパスを切替)
+PROFILES = PR.ProfileManager(SETTINGS)
+ST.set_active_path(PROFILES.current().db)
 XOR_KEY = bytes([
     0xe3, 0x00, 0xe9, 0x00, 0x34, 0x85, 0x1d, 0x04,
     0xf0, 0x95, 0xc0, 0x70, 0x0e, 0x1e, 0xb9, 0xf3,
@@ -1595,12 +1614,15 @@ class DashboardTab(QWidget):
         sorted_metrics = sorted(METRICS, key=sort_key)
 
         # 略号→日本語説明 (ツールチップ用)
+        _r10 = T.current().ring_10_radius_mm
+        _rb = T.current().ring_inner_10_radius_mm
+        _r9 = T.current().ring_9_radius_mm
         _metric_tooltips = {
-            "ten_a_1s":     "10a — 直前 1 秒で 10 点圏内 (R≤5.2mm) にいた時間 (%)",
+            "ten_a_1s":     f"10a — 直前 1 秒で 10 点圏内 (R≤{_r10}mm) にいた時間 (%)",
             "ten_a_05s":    "10a-0.5 — 直前 0.5 秒で 10 点圏内にいた時間 (%)",
-            "ten_b_1s":     "10b — 直前 1 秒で 10 点中央 (R≤2.5mm) にいた時間 (%)",
+            "ten_b_1s":     f"10b — 直前 1 秒で 10 点中央 (R≤{_rb}mm) にいた時間 (%)",
             "ten_b_05s":    "10b-0.5 — 直前 0.5 秒で 10 点中央にいた時間 (%)",
-            "nine_c_1s":    "9c — 直前 1 秒で 9 点圏内 (R≤13.2mm) にいた時間 (%)",
+            "nine_c_1s":    f"9c — 直前 1 秒で 9 点圏内 (R≤{_r9}mm) にいた時間 (%)",
             "r95_1":        "S1 — 直前 1 秒のホールド円半径 R95 (mm)",
             "r95_05":       "S2 — 直前 0.5 秒のホールド円半径 R95 (mm)",
             "r95_2":        "直前 2 秒のホールド円半径 R95 (mm)",
@@ -1768,18 +1790,18 @@ class SpectrumTab(QWidget):
 # ===========================================================================
 
 class SeriesTargetView(QGraphicsView):
-    """Series の弾着を表示する簡略 ISSF 50m ライフルターゲット。
+    """Series の弾着を表示する ISSF ターゲット。射撃種目は scatt_target に従う。
 
     各 shot の発射点を番号付きでプロット、古→新で色変化、重心 + R95 円。
     """
 
-    OUTER_DIAM_MM = 154.4
-    RING_STEP_MM = 16.0
-    BLACK_DIAM_MM = 112.4
-    INNER_TEN_DIAM_MM = 5.0
-
     def __init__(self):
         super().__init__()
+        d = T.current()
+        self.OUTER_DIAM_MM = d.outer_diam_mm
+        self.RING_STEP_MM = d.ring_step_mm
+        self.BLACK_DIAM_MM = d.black_diam_mm
+        self.INNER_TEN_DIAM_MM = d.inner_ten_diam_mm
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self._scene = QGraphicsScene()
         self.setScene(self._scene)
@@ -1793,6 +1815,7 @@ class SeriesTargetView(QGraphicsView):
 
     def _draw_target(self):
         # 簡略版: 黒地のみ、リング線、Inner 10
+        sc = self.OUTER_DIAM_MM / 154.4
         r_out = self.OUTER_DIAM_MM / 2.0
         self._scene.addEllipse(
             -r_out, -r_out, self.OUTER_DIAM_MM, self.OUTER_DIAM_MM,
@@ -1805,15 +1828,15 @@ class SeriesTargetView(QGraphicsView):
             QPen(QColor(30, 30, 30)),
             QBrush(C.TARGET_BLACK),
         )
-        pen_w = QPen(C.TARGET_LINE_LIGHT); pen_w.setWidthF(0.25)
-        pen_b = QPen(C.TARGET_LINE_DARK);  pen_b.setWidthF(0.25)
+        pen_w = QPen(C.TARGET_LINE_LIGHT); pen_w.setWidthF(0.25 * sc)
+        pen_b = QPen(C.TARGET_LINE_DARK);  pen_b.setWidthF(0.25 * sc)
         for ring in range(1, 11):
             d = self.OUTER_DIAM_MM - (ring - 1) * self.RING_STEP_MM
             r = d / 2.0
             pen = pen_w if d > self.BLACK_DIAM_MM else pen_b
             self._scene.addEllipse(-r, -r, d, d, pen, QBrush(Qt.BrushStyle.NoBrush))
         r_inner = self.INNER_TEN_DIAM_MM / 2.0
-        pen_x = QPen(QColor(255, 255, 255)); pen_x.setWidthF(0.25)
+        pen_x = QPen(QColor(255, 255, 255)); pen_x.setWidthF(0.25 * sc)
         pen_x.setStyle(Qt.PenStyle.DashLine)
         self._scene.addEllipse(
             -r_inner, -r_inner, self.INNER_TEN_DIAM_MM, self.INNER_TEN_DIAM_MM,
@@ -1835,8 +1858,10 @@ class SeriesTargetView(QGraphicsView):
         n = len(valid)
         xs = np.array([s["fire_x"] for _, s in valid])
         ys = np.array([s["fire_y"] for _, s in valid])
-        # 着弾点と番号
-        font = QFont(); font.setPointSizeF(4.0); font.setBold(True)
+        # ターゲット直径に合わせてマーカーを縮尺 (50m: 1.0, 10m 空気: ~0.3)
+        sc = self.OUTER_DIAM_MM / 154.4
+        dot_r = 2.0 * sc
+        font = QFont(); font.setPointSizeF(4.0 * sc); font.setBold(True)
         for pos, (idx, s) in enumerate(valid):
             x = s["fire_x"]
             y = s["fire_y"]  # SCATT y↓ = QGraphicsView y↓ なのでそのまま
@@ -1845,15 +1870,15 @@ class SeriesTargetView(QGraphicsView):
             col = QColor(int(60 + f * 180), int(100 - f * 80), int(220 - f * 180))
             # 点
             dot = self._scene.addEllipse(
-                x - 2, y - 2, 4, 4,
-                QPen(C.FG, 0.4),
+                x - dot_r, y - dot_r, 2 * dot_r, 2 * dot_r,
+                QPen(C.FG, 0.4 * sc),
                 QBrush(col),
             )
             self._dyn.append(dot)
             # 番号
             t = self._scene.addText(str(idx), font)
             t.setDefaultTextColor(C.FG)
-            t.setPos(x + 2.5, y - 3.0)
+            t.setPos(x + 2.5 * sc, y - 3.0 * sc)
             self._dyn.append(t)
         # 重心 + R95
         if n >= 2:
@@ -1861,12 +1886,12 @@ class SeriesTargetView(QGraphicsView):
             rs = np.hypot(xs - cx, ys - cy)
             r95 = float(np.percentile(rs, 95))
             # 重心 (黄十字)
-            cross_pen = QPen(C.ACCENT_Y); cross_pen.setWidthF(0.5)
-            self._dyn.append(self._scene.addLine(cx - 3, cy, cx + 3, cy, cross_pen))
-            self._dyn.append(self._scene.addLine(cx, cy - 3, cx, cy + 3, cross_pen))
+            cross_pen = QPen(C.ACCENT_Y); cross_pen.setWidthF(0.5 * sc)
+            self._dyn.append(self._scene.addLine(cx - 3 * sc, cy, cx + 3 * sc, cy, cross_pen))
+            self._dyn.append(self._scene.addLine(cx, cy - 3 * sc, cx, cy + 3 * sc, cross_pen))
             # R95 円
             if r95 > 0:
-                ring_pen = QPen(C.ACCENT_Y); ring_pen.setWidthF(0.3)
+                ring_pen = QPen(C.ACCENT_Y); ring_pen.setWidthF(0.3 * sc)
                 ring_pen.setStyle(Qt.PenStyle.DashLine)
                 self._dyn.append(self._scene.addEllipse(
                     cx - r95, cy - r95, 2 * r95, 2 * r95,
@@ -1874,7 +1899,8 @@ class SeriesTargetView(QGraphicsView):
                 ))
 
     def resizeEvent(self, e):
-        self.fitInView(QRectF(-95, -95, 190, 190), Qt.AspectRatioMode.KeepAspectRatio)
+        r = self.OUTER_DIAM_MM / 2.0 * 1.23
+        self.fitInView(QRectF(-r, -r, 2 * r, 2 * r), Qt.AspectRatioMode.KeepAspectRatio)
         super().resizeEvent(e)
 
 
@@ -4056,6 +4082,27 @@ class SettingsTab(QWidget):
         self.cb_caffeine = QCheckBox()
         self.cb_caffeine.setChecked(SETTINGS.get("behavior/caffeinate"))
         form_g.addRow("画面スリープ抑制 (caffeinate)", self.cb_caffeine)
+        # 更新通知
+        self.le_update_url = QLineEdit()
+        self.le_update_url.setText(SETTINGS.get("update/manifest_url") or "")
+        self.le_update_url.setPlaceholderText("https://.../scatt-manifest.json (任意)")
+        self.le_update_url.setToolTip(
+            "公開された JSON manifest URL を指定すると「更新を確認」ボタンが機能します。"
+        )
+        form_g.addRow("更新確認 URL", self.le_update_url)
+        # 射撃種目
+        self.cb_discipline = QComboBox()
+        for k, d in T.DISCIPLINES.items():
+            self.cb_discipline.addItem(d.label, k)
+        cur_key = SETTINGS.get("discipline") or "rifle_50m"
+        idx = self.cb_discipline.findData(cur_key)
+        if idx >= 0:
+            self.cb_discipline.setCurrentIndex(idx)
+        self.cb_discipline.setToolTip(
+            "ターゲット幾何と 10a / 10b / 9c の判定半径を切り替えます。"
+            "変更は次回起動時に反映されます。"
+        )
+        form_g.addRow("射撃種目", self.cb_discipline)
         gw = QWidget(); gw.setLayout(form_g); v.addWidget(gw)
 
         # ========== Thresholds ==========
@@ -4227,8 +4274,28 @@ class SettingsTab(QWidget):
         self.btn_open_logs = QPushButton("ログを開く")
         self.btn_open_logs.clicked.connect(self._on_open_logs)
         about_row.addWidget(self.btn_open_logs)
+        self.btn_check_update = QPushButton("更新を確認")
+        self.btn_check_update.clicked.connect(self._on_check_update)
+        about_row.addWidget(self.btn_check_update)
         about_row.addStretch()
         v.addLayout(about_row)
+
+        # ----- バックアップ/インポート -----
+        backup_row = QHBoxLayout()
+        self.btn_backup = QPushButton("バックアップ (.zip 書き出し)")
+        self.btn_backup.clicked.connect(self._on_backup)
+        backup_row.addWidget(self.btn_backup)
+        self.btn_restore = QPushButton("バックアップから復元")
+        self.btn_restore.clicked.connect(self._on_restore)
+        backup_row.addWidget(self.btn_restore)
+        backup_row.addStretch()
+        v.addLayout(backup_row)
+        backup_note = QLabel(
+            "<small style='color:#666'>バックアップ対象: 心拍データ・除外フラグ "
+            "(extra.db) + アプリ設定 (plist)。SCATT 本体のデータは含まれません。</small>"
+        )
+        backup_note.setWordWrap(True)
+        v.addWidget(backup_note)
 
         # ========== ボタン ==========
         btn_row = QHBoxLayout()
@@ -4270,10 +4337,14 @@ class SettingsTab(QWidget):
         ) != QMessageBox.StandardButton.Ok:
             return
         try:
-            if os.path.exists(ST.DEFAULT_EXTRA_DB):
-                os.remove(ST.DEFAULT_EXTRA_DB)
+            db_path = ST.active_path()
+            if os.path.exists(db_path):
+                os.remove(db_path)
             ST.ensure_db()
-            QMessageBox.information(self, "完了", "補助 DB を初期化しました。")
+            QMessageBox.information(
+                self, "完了",
+                f"補助 DB を初期化しました。\n(profile: {PROFILES.current().name})"
+            )
         except Exception as e:
             QMessageBox.critical(self, "失敗", str(e))
 
@@ -4283,6 +4354,98 @@ class SettingsTab(QWidget):
             subprocess.run(["open", str(LOG.LOG_FILE)], check=False)
         except Exception as e:
             QMessageBox.warning(self, "失敗", str(e))
+
+    def _on_check_update(self):
+        url = (SETTINGS.get("update/manifest_url") or "").strip()
+        if not url:
+            QMessageBox.information(
+                self, "更新確認",
+                "更新マニフェスト URL が設定されていません。\n"
+                "Settings > 動作 で公開予定の manifest URL を指定すると\n"
+                "新バージョンの有無を確認できます。"
+            )
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            result = UPD.check_for_update(VERSION, url)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if result is None:
+            QMessageBox.warning(self, "更新確認",
+                                "manifest を取得できませんでした (ネット接続 / URL を確認)。")
+            return
+        if not result["available"]:
+            QMessageBox.information(
+                self, "更新確認",
+                f"現在 {result['current']} が最新です (公開: {result['latest']})。"
+            )
+            return
+        notes = result.get("notes", "")
+        msg = (f"新しいバージョン {result['latest']} が公開されています "
+               f"(現在: {result['current']})。\n\n")
+        if notes:
+            msg += f"--- リリースノート ---\n{notes}\n\n"
+        if result.get("url"):
+            msg += f"ダウンロード: {result['url']}"
+        QMessageBox.information(self, "更新あり", msg)
+
+    def _on_backup(self):
+        from PyQt6.QtWidgets import QFileDialog
+        default_name = (
+            f"scatt-analyzer-backup-"
+            f"{__import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        )
+        path, _ = QFileDialog.getSaveFileName(
+            self, "バックアップを保存", default_name, "ZIP (*.zip)"
+        )
+        if not path:
+            return
+        try:
+            mf = BK.backup_archive(path, version=VERSION)
+            files = ", ".join(f["name"] for f in mf["files"])
+            QMessageBox.information(
+                self, "バックアップ完了",
+                f"出力先: {path}\n含めたファイル: {files}\n作成日時: {mf['created_at']}"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "失敗", str(e))
+
+    def _on_restore(self):
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, "バックアップから復元", "", "ZIP (*.zip)"
+        )
+        if not path:
+            return
+        try:
+            mf = BK.inspect_archive(path)
+        except Exception as e:
+            QMessageBox.critical(self, "失敗", f"zip 読み込み失敗: {e}")
+            return
+        ver = mf.get("scatt_analyzer_version", "?")
+        created = mf.get("created_at", "?")
+        files = ", ".join(f.get("name", "?") for f in mf.get("files", []))
+        if QMessageBox.question(
+            self, "復元確認",
+            f"以下を現在のデータに上書きします:\n"
+            f"  ファイル: {files}\n"
+            f"  バージョン: {ver}\n"
+            f"  作成日時: {created}\n\n"
+            f"現在の心拍データ・設定は失われます。続行しますか?",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+        ) != QMessageBox.StandardButton.Ok:
+            return
+        try:
+            result = BK.restore_archive(path)
+            QMessageBox.information(
+                self, "復元完了",
+                f"extra.db: {'✓' if result['extra_db'] else '—'}\n"
+                f"settings.plist: {'✓' if result['settings_plist'] else '—'}\n\n"
+                + ("\n".join(result["errors"]) if result["errors"]
+                   else "次回起動時に反映されます。アプリを再起動してください。")
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "失敗", str(e))
 
     def _on_export_shots_csv(self):
         # MainWindow 側でハンドリング
@@ -4321,6 +4484,18 @@ class SettingsTab(QWidget):
         SETTINGS.set("behavior/polling_interval_s", self.sp_polling.value())
         SETTINGS.set("behavior/always_on_top", self.cb_top.isChecked())
         SETTINGS.set("behavior/caffeinate", self.cb_caffeine.isChecked())
+        # 更新確認 URL
+        SETTINGS.set("update/manifest_url", self.le_update_url.text().strip())
+        # 射撃種目 (再起動で反映)
+        new_disc = self.cb_discipline.currentData()
+        cur_disc = SETTINGS.get("discipline") or "rifle_50m"
+        if new_disc and new_disc != cur_disc:
+            SETTINGS.set("discipline", new_disc)
+            QMessageBox.information(
+                self, "射撃種目を変更",
+                f"射撃種目を「{T.DISCIPLINES[new_disc].label}」に変更しました。\n"
+                "アプリを再起動すると反映されます。"
+            )
         # 閾値
         SETTINGS.set("thresh/suspicious_radius_mm", self.sp_suspicious.value())
         SETTINGS.set("thresh/hold_velocity_mm_s", self.sp_hold_v.value())
@@ -4378,15 +4553,15 @@ class HelpTab(QWidget):
 
 
 class TargetTab(QGraphicsView):
-    """ISSF 50m ライフルターゲット + 軌跡 (発射前/後 色分け) + 発射点マーカー。"""
-
-    OUTER_DIAM_MM = 154.4
-    RING_STEP_MM = 16.0
-    BLACK_DIAM_MM = 112.4
-    INNER_TEN_DIAM_MM = 5.0
+    """ISSF ターゲット (射撃種目に応じる) + 軌跡 (発射前/後 色分け) + 発射点マーカー。"""
 
     def __init__(self):
         super().__init__()
+        d = T.current()
+        self.OUTER_DIAM_MM = d.outer_diam_mm
+        self.RING_STEP_MM = d.ring_step_mm
+        self.BLACK_DIAM_MM = d.black_diam_mm
+        self.INNER_TEN_DIAM_MM = d.inner_ten_diam_mm
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self._scene = QGraphicsScene()
         self.setScene(self._scene)
@@ -4396,33 +4571,34 @@ class TargetTab(QGraphicsView):
         self._dyn = []
 
     def _draw_target(self):
+        sc = self.OUTER_DIAM_MM / 154.4
         r_out = self.OUTER_DIAM_MM / 2.0
         self._scene.addEllipse(-r_out, -r_out, self.OUTER_DIAM_MM, self.OUTER_DIAM_MM,
                                QPen(QColor(80, 80, 80)), QBrush(C.TARGET_WHITE))
         r_black = self.BLACK_DIAM_MM / 2.0
         self._scene.addEllipse(-r_black, -r_black, self.BLACK_DIAM_MM, self.BLACK_DIAM_MM,
                                QPen(QColor(30, 30, 30)), QBrush(C.TARGET_BLACK))
-        pen_w = QPen(C.TARGET_LINE_LIGHT); pen_w.setWidthF(0.25)
-        pen_b = QPen(C.TARGET_LINE_DARK);  pen_b.setWidthF(0.25)
+        pen_w = QPen(C.TARGET_LINE_LIGHT); pen_w.setWidthF(0.25 * sc)
+        pen_b = QPen(C.TARGET_LINE_DARK);  pen_b.setWidthF(0.25 * sc)
         for ring in range(1, 11):
             d = self.OUTER_DIAM_MM - (ring - 1) * self.RING_STEP_MM
             r = d / 2.0
             pen = pen_w if d > self.BLACK_DIAM_MM else pen_b
             self._scene.addEllipse(-r, -r, d, d, pen, QBrush(Qt.BrushStyle.NoBrush))
         r_inner = self.INNER_TEN_DIAM_MM / 2.0
-        pen_x = QPen(QColor(255, 255, 255)); pen_x.setWidthF(0.25); pen_x.setStyle(Qt.PenStyle.DashLine)
+        pen_x = QPen(QColor(255, 255, 255)); pen_x.setWidthF(0.25 * sc); pen_x.setStyle(Qt.PenStyle.DashLine)
         self._scene.addEllipse(-r_inner, -r_inner, self.INNER_TEN_DIAM_MM, self.INNER_TEN_DIAM_MM,
                                pen_x, QBrush(Qt.BrushStyle.NoBrush))
-        font = QFont(); font.setPointSizeF(3.5)
+        font = QFont(); font.setPointSizeF(3.5 * sc)
         for ring in range(1, 10):
             d = self.OUTER_DIAM_MM - (ring - 1) * self.RING_STEP_MM
             r = d / 2.0
             tx = self._scene.addText(str(ring), font)
             tx.setDefaultTextColor(QColor(200, 200, 200) if d < self.BLACK_DIAM_MM else QColor(40, 40, 40))
-            tx.setPos(-2.0, -r - 4.5)
-        cross_pen = QPen(QColor(220, 220, 220)); cross_pen.setWidthF(0.15)
-        self._scene.addLine(-2, 0, 2, 0, cross_pen)
-        self._scene.addLine(0, -2, 0, 2, cross_pen)
+            tx.setPos(-2.0 * sc, -r - 4.5 * sc)
+        cross_pen = QPen(QColor(220, 220, 220)); cross_pen.setWidthF(0.15 * sc)
+        self._scene.addLine(-2 * sc, 0, 2 * sc, 0, cross_pen)
+        self._scene.addLine(0, -2 * sc, 0, 2 * sc, cross_pen)
 
     def _clear_dyn(self):
         for it in self._dyn:
@@ -4433,6 +4609,7 @@ class TargetTab(QGraphicsView):
         self._clear_dyn()
         if not samples:
             return
+        sc = self.OUTER_DIAM_MM / 154.4
         fire_idx = None
         if shots:
             fire_idx = shots[0]["trace_offset"]
@@ -4451,31 +4628,37 @@ class TargetTab(QGraphicsView):
             pre = list(samples[:fire_idx + 1])
             post = list(samples[fire_idx:])
         if pre:
-            pen = QPen(C.ACCENT_G); pen.setWidthF(0.5); pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen = QPen(C.ACCENT_G); pen.setWidthF(0.5 * sc); pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             it = QGraphicsPathItem(mk(pre)); it.setPen(pen)
             self._scene.addItem(it); self._dyn.append(it)
         if post:
             pen = QPen(QColor(C.ACCENT_R.red(), C.ACCENT_R.green(), C.ACCENT_R.blue(), 180))
-            pen.setWidthF(0.4); pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setWidthF(0.4 * sc); pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             it = QGraphicsPathItem(mk(post)); it.setPen(pen)
             self._scene.addItem(it); self._dyn.append(it)
         x_end, y_end, _ = samples[-1]
-        self._dyn.append(self._scene.addEllipse(x_end - 0.9, y_end - 0.9, 1.8, 1.8,
+        end_r = 0.9 * sc
+        self._dyn.append(self._scene.addEllipse(x_end - end_r, y_end - end_r, 2 * end_r, 2 * end_r,
                                                 QPen(Qt.PenStyle.NoPen), QBrush(C.ACCENT_O)))
         if fire_idx is not None:
             fx, fy, _ = samples[fire_idx]
-            yp = QPen(C.ACCENT_Y); yp.setWidthF(0.4)
-            self._dyn.append(self._scene.addEllipse(fx - 3, fy - 3, 6, 6, yp, QBrush(Qt.BrushStyle.NoBrush)))
-            self._dyn.append(self._scene.addLine(fx - 4.5, fy, fx + 4.5, fy, yp))
-            self._dyn.append(self._scene.addLine(fx, fy - 4.5, fx, fy + 4.5, yp))
-            self._dyn.append(self._scene.addEllipse(fx - 0.6, fy - 0.6, 1.2, 1.2,
+            yp = QPen(C.ACCENT_Y); yp.setWidthF(0.4 * sc)
+            ring_r = 3 * sc
+            cross_h = 4.5 * sc
+            inner_r = 0.6 * sc
+            self._dyn.append(self._scene.addEllipse(fx - ring_r, fy - ring_r, 2 * ring_r, 2 * ring_r,
+                                                    yp, QBrush(Qt.BrushStyle.NoBrush)))
+            self._dyn.append(self._scene.addLine(fx - cross_h, fy, fx + cross_h, fy, yp))
+            self._dyn.append(self._scene.addLine(fx, fy - cross_h, fx, fy + cross_h, yp))
+            self._dyn.append(self._scene.addEllipse(fx - inner_r, fy - inner_r, 2 * inner_r, 2 * inner_r,
                                                     QPen(Qt.PenStyle.NoPen), QBrush(C.ACCENT_Y)))
 
     def update_trace(self, samples, shots, sample_rate):
         self.show_trace(samples, shots)
 
     def resizeEvent(self, e):
-        self.fitInView(QRectF(-95, -95, 190, 190), Qt.AspectRatioMode.KeepAspectRatio)
+        r = self.OUTER_DIAM_MM / 2.0 * 1.23
+        self.fitInView(QRectF(-r, -r, 2 * r, 2 * r), Qt.AspectRatioMode.KeepAspectRatio)
         super().resizeEvent(e)
 
 
@@ -4724,6 +4907,20 @@ class MainWindow(QMainWindow):
             f"  border: 1px solid {hex_of(C.BORDER_STRONG)}; padding: 2px 8px; }}"
         )
         tb.addWidget(self.compare_scope)
+        # 射手 Profile
+        tb.addSeparator()
+        prof_lbl = QLabel("射手:")
+        prof_lbl.setStyleSheet(f"color: {hex_of(C.FG_MUTED)}; font-size: 11px; padding: 0 4px;")
+        tb.addWidget(prof_lbl)
+        self.profile_selector = QComboBox()
+        self.profile_selector.setMinimumWidth(120)
+        self.profile_selector.setStyleSheet(
+            f"QComboBox {{ background-color: {hex_of(C.BG)}; color: {hex_of(C.FG)};"
+            f"  border: 1px solid {hex_of(C.BORDER_STRONG)}; padding: 2px 8px; }}"
+        )
+        self._refresh_profile_selector()
+        self.profile_selector.currentIndexChanged.connect(self._on_profile_selected)
+        tb.addWidget(self.profile_selector)
         # 心拍 ToolBar
         tb.addSeparator()
         self.hr_label = QLabel("心拍: —    HRV: —")
@@ -4802,13 +4999,12 @@ class MainWindow(QMainWindow):
             extras = ST.load_all_extras()
         except Exception as e:
             extras = {}
-            print(f"[warn] extra DB load failed: {e}", file=sys.stderr)
+            LOG.warn(f"extra DB load failed: {e}")
         # extras 構造: {shot_id: {"hr": int, "rmssd": float, ...}}
         self._hr_at_shot: dict[int, dict] = dict(extras)
         # 起動時に観測した数を status に表示
         if extras:
-            print(f"[info] loaded {len(extras)} shot extras from {ST.DEFAULT_EXTRA_DB}",
-                  file=sys.stderr)
+            LOG.info(f"loaded {len(extras)} shot extras from {ST.active_path()}")
         # 心拍ブリッジ
         self.hr_bridge = HeartRateBridge()
         self.hr_bridge.data_received.connect(self._on_hr_data)
@@ -4973,6 +5169,121 @@ class MainWindow(QMainWindow):
         # 既に同じ session を見ているなら、active 表示だけ更新
         self.active_indicator.setVisible(sid == self._current_session_id)
 
+    def _refresh_profile_selector(self):
+        """ToolBar の射手コンボを current profile を含めて再構築。"""
+        self.profile_selector.blockSignals(True)
+        self.profile_selector.clear()
+        cur_id = PROFILES.current_id()
+        for p in PROFILES.list_profiles():
+            self.profile_selector.addItem(p.name, p.id)
+        # 末尾に管理メニュー
+        self.profile_selector.addItem("─────────", None)
+        self.profile_selector.addItem("+ 新しい射手…", "__new__")
+        self.profile_selector.addItem("✎ 管理…", "__manage__")
+        # current を選択状態に
+        idx = self.profile_selector.findData(cur_id)
+        if idx >= 0:
+            self.profile_selector.setCurrentIndex(idx)
+        self.profile_selector.blockSignals(False)
+
+    def _on_profile_selected(self, _idx: int):
+        data = self.profile_selector.currentData()
+        if data is None:
+            # separator が選ばれた場合 (起きない想定だが念のため復元)
+            self._refresh_profile_selector()
+            return
+        if data == "__new__":
+            self._on_profile_new()
+            return
+        if data == "__manage__":
+            self._on_profile_manage()
+            return
+        # 既存 profile への切替
+        cur_id = PROFILES.current_id()
+        if data == cur_id:
+            return
+        if PROFILES.set_current(data):
+            self._reload_after_profile_switch()
+
+    def _on_profile_new(self):
+        from PyQt6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(self, "新しい射手", "射手名:")
+        if not ok or not name.strip():
+            self._refresh_profile_selector()
+            return
+        new_p = PROFILES.add(name.strip())
+        PROFILES.set_current(new_p.id)
+        self._refresh_profile_selector()
+        self._reload_after_profile_switch()
+
+    def _on_profile_manage(self):
+        """射手の一覧を表示し、改名・削除を提供。"""
+        from PyQt6.QtWidgets import QInputDialog
+        profiles = PROFILES.list_profiles()
+        items = [f"{p.name}  [{p.id}]" for p in profiles]
+        choice, ok = QInputDialog.getItem(
+            self, "射手の管理", "操作する射手を選択:",
+            items, 0, False,
+        )
+        self._refresh_profile_selector()
+        if not ok:
+            return
+        target = profiles[items.index(choice)]
+        action_items = ["改名", "削除"]
+        if target.id == "default":
+            action_items = ["改名"]
+        act, ok = QInputDialog.getItem(
+            self, target.name, "操作を選んでください:", action_items, 0, False,
+        )
+        if not ok:
+            return
+        if act == "改名":
+            new_name, ok = QInputDialog.getText(self, "改名", "新しい名前:", text=target.name)
+            if ok and new_name.strip():
+                PROFILES.rename(target.id, new_name.strip())
+                self._refresh_profile_selector()
+        elif act == "削除":
+            ret = QMessageBox.question(
+                self, "射手を削除",
+                f"「{target.name}」を削除します。\n"
+                "補助 DB ファイルも削除しますか?\n"
+                "(いいえ → 一覧から外すだけ、DB は残す)",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+            )
+            if ret == QMessageBox.StandardButton.Cancel:
+                return
+            remove_file = (ret == QMessageBox.StandardButton.Yes)
+            if PROFILES.delete(target.id, remove_db_file=remove_file):
+                self._refresh_profile_selector()
+                self._reload_after_profile_switch()
+
+    def _reload_after_profile_switch(self):
+        """profile 切替後にキャッシュを捨てて UI を更新。"""
+        self._session_cache.clear()
+        # extras を新 DB から読み直す
+        try:
+            ST.ensure_db()
+            extras = ST.load_all_extras()
+            self._hr_at_shot = dict(extras)
+            LOG.info(
+                f"profile switched to '{PROFILES.current().name}' — "
+                f"loaded {len(extras)} extras from {ST.active_path()}"
+            )
+        except Exception as e:
+            LOG.warn(f"profile switch reload failed: {e}")
+        # Sessions タブを reload
+        try:
+            self.sessions_tab.reload(self.db_path, self._hr_at_shot)
+        except Exception as e:
+            LOG.warn(f"sessions reload failed: {e}")
+        # 現在の session を再表示
+        sid = self._current_session_id
+        if sid is not None:
+            self._update_session_views(sid)
+        self.status.showMessage(f"射手: {PROFILES.current().name}", 3000)
+
     def _on_compare_scope_changed(self, _idx: int):
         """比較範囲 (current session / same position / all) 変更時、表示を再計算。"""
         sid = self._current_session_id
@@ -5085,7 +5396,7 @@ class MainWindow(QMainWindow):
                         rmssd_30s=self._rmssd_current,
                     )
                 except Exception as e:
-                    print(f"[warn] extra save failed: {e}", file=sys.stderr)
+                    LOG.warn(f"extra save failed: {e}")
         self._apply_trace(t)
         # shot 一覧の先頭に新しい shot を挿入
         for s in shots:
@@ -5131,13 +5442,13 @@ class MainWindow(QMainWindow):
             conn.close()
             removed = ST.cleanup_orphans(valid_ids)
             if removed:
-                print(f"[info] removed {removed} orphan extras", file=sys.stderr)
+                LOG.info(f"removed {removed} orphan extras")
                 # in-memory cache からも orphan を削除
                 for sid_o in list(self._hr_at_shot.keys()):
                     if sid_o not in valid_ids:
                         self._hr_at_shot.pop(sid_o, None)
         except Exception as e:
-            print(f"[warn] orphan cleanup failed: {e}", file=sys.stderr)
+            LOG.warn(f"orphan cleanup failed: {e}")
         self.shot_list.reload()
         self._reload_session_list()
         self.sessions_tab.reload(self.db_path, self._hr_at_shot)

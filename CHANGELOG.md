@@ -3,6 +3,31 @@
 すべての変更点は [Keep a Changelog](https://keepachangelog.com/) 形式に倣う。
 バージョニングは [Semantic Versioning](https://semver.org/) ベース。
 
+## [0.3.0] — 2026-05-13
+
+### Added
+- **射撃種目切替** (`scatt_target.py`): 50m ライフル(既存)/ 10m エアライフル / 10m エアピストル に対応
+  - ターゲット幾何 (外径・リング間隔・黒地) と判定半径 (10a/10b/9c) を種目別に適用
+  - Settings > 動作 > 射撃種目 から選択、再起動で反映
+  - ターゲット描画のマーカー/フォント/十字を target 外径に合わせて自動スケール
+- **複数射手 (Profile) 対応** (`scatt_profile.py`): 心拍/HRV/除外フラグを射手別に保存
+  - ToolBar の射手コンボから切替・新規追加・改名・削除
+  - 既定 (default) profile は既存 `extra.db` をそのまま継続利用
+  - 新規 profile は `~/Library/Application Support/scatt-prone-analyzer/profiles/{id}/extra.db` に独立保存
+- **バックアップ / インポート機能** (`scatt_backup.py`): 補助 DB (心拍・除外フラグ) と設定を zip で書き出し / 復元
+  - Settings タブから操作、manifest 付き (バージョン / 作成日時 / ホスト) で zip 化
+- **更新通知** (`scatt_update.py`): 公開 JSON manifest を取りに行く軽量チェッカー
+  - Settings の "更新確認 URL" に manifest を指定 → "更新を確認" ボタンで新版有無を表示
+- **pytest 単体テスト** (`tests/`): scatt_target / scatt_analysis / scatt_backup / scatt_feedback / scatt_update / scatt_profile を網羅
+  - 計 26 ケース、`make test` で実行
+
+### Changed
+- 残っていた `print("[warn] ...")` を `LOG.warn/info/error` に統一(ログファイルへ集約)
+- ツールチップの判定半径 (R≤5.2mm 等) を現在の射撃種目に応じて動的表示
+
+### Fixed
+- main() 内の `from PyQt6.QtWidgets import QApplication` で起動時に UnboundLocalError が出ていた問題
+
 ## [0.2.0] — 2026-05-12
 
 ### Added

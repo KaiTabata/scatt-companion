@@ -33,8 +33,30 @@ DEFAULT_EXTRA_DB = os.path.expanduser(
     "~/Library/Application Support/scatt-prone-analyzer/extra.db"
 )
 
+# Profile (複数射手) 対応のため active path を切替可能に。
+# scatt_profile.set_current() がここを書き換える。
+_ACTIVE_EXTRA_DB = DEFAULT_EXTRA_DB
 
-def ensure_db(path: str = DEFAULT_EXTRA_DB) -> str:
+
+def set_active_path(path: str) -> None:
+    """以降の load_all_extras 等のデフォルト path を切替。
+
+    profile 切替で呼ばれる。明示的に path 引数を渡したコールは影響を受けない。
+    """
+    global _ACTIVE_EXTRA_DB
+    _ACTIVE_EXTRA_DB = path
+
+
+def active_path() -> str:
+    return _ACTIVE_EXTRA_DB
+
+
+def _resolve(path: Optional[str]) -> str:
+    return path if path is not None else _ACTIVE_EXTRA_DB
+
+
+def ensure_db(path: Optional[str] = None) -> str:
+    path = _resolve(path)
     """DB ファイルとテーブルを作成 (なければ)。返り値: 実 path。
 
     既存 DB に新規カラム (hidden) があれば ALTER TABLE で追加する。
@@ -71,8 +93,9 @@ def ensure_db(path: str = DEFAULT_EXTRA_DB) -> str:
     return path
 
 
-def set_shot_hidden(shot_id: int, hidden: bool, path: str = DEFAULT_EXTRA_DB):
+def set_shot_hidden(shot_id: int, hidden: bool, path: Optional[str] = None):
     """shot を集計から除外 (hidden=1) / 復帰 (hidden=0)。"""
+    path = _resolve(path)
     conn = sqlite3.connect(path, timeout=5.0)
     try:
         conn.execute("PRAGMA busy_timeout = 5000;")
@@ -100,12 +123,13 @@ def save_shot_extras(
     imu_pitch: Optional[float] = None,
     imu_roll: Optional[float] = None,
     note: Optional[str] = None,
-    path: str = DEFAULT_EXTRA_DB,
+    path: Optional[str] = None,
 ):
     """shot_id に対する補助データを upsert。
 
     None の引数は既存値を上書きしない(COALESCE)。
     """
+    path = _resolve(path)
     conn = sqlite3.connect(path, timeout=5.0)
     try:
         conn.execute("PRAGMA busy_timeout = 5000;")
@@ -130,7 +154,8 @@ def save_shot_extras(
         conn.close()
 
 
-def load_all_extras(path: str = DEFAULT_EXTRA_DB) -> dict[int, dict]:
+def load_all_extras(path: Optional[str] = None) -> dict[int, dict]:
+    path = _resolve(path)
     """全 shot_extras を {shot_id: {...}} で返す。DB 未作成なら空 dict。"""
     if not os.path.exists(path):
         return {}
@@ -161,7 +186,8 @@ def load_all_extras(path: str = DEFAULT_EXTRA_DB) -> dict[int, dict]:
         conn.close()
 
 
-def delete_shot_extras(shot_ids: list[int], path: str = DEFAULT_EXTRA_DB) -> int:
+def delete_shot_extras(shot_ids: list[int], path: Optional[str] = None) -> int:
+    path = _resolve(path)
     """SCATT 側で shot 削除した時に呼ぶ。返り値: 削除した行数。"""
     if not shot_ids or not os.path.exists(path):
         return 0
@@ -179,7 +205,8 @@ def delete_shot_extras(shot_ids: list[int], path: str = DEFAULT_EXTRA_DB) -> int
         conn.close()
 
 
-def cleanup_orphans(valid_shot_ids: list[int], path: str = DEFAULT_EXTRA_DB) -> int:
+def cleanup_orphans(valid_shot_ids: list[int], path: Optional[str] = None) -> int:
+    path = _resolve(path)
     """SCATT 側に存在しなくなった shot_id の extras を一括削除。"""
     if not os.path.exists(path):
         return 0
@@ -201,7 +228,8 @@ def cleanup_orphans(valid_shot_ids: list[int], path: str = DEFAULT_EXTRA_DB) -> 
         conn.close()
 
 
-def export_to_jsonl(path: str = DEFAULT_EXTRA_DB) -> list[dict]:
+def export_to_jsonl(path: Optional[str] = None) -> list[dict]:
+    path = _resolve(path)
     """全 shot_extras を [{shot_id, hr_at_fire, ...}, ...] のリストで返す
     (バックアップ / 解析用)。
     """
