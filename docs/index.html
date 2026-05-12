@@ -40,6 +40,9 @@
     </div>
     <p class="hero-note">SCATT Electronics 公式ではありません。Apache License 2.0。</p>
   </div>
+  <div class="hero-shot">
+    <img src="img/dashboard.png" alt="SCATT Prone Analyzer — Dashboard">
+  </div>
 </header>
 
 <section id="why" class="section">
@@ -131,12 +134,32 @@
         <img src="img/dashboard.png" alt="Dashboard" onerror="this.style.display='none'">
       </div>
       <div class="tabtour-item">
-        <h3>Sessions</h3>
-        <p>上=全セッション一覧、下=サブタブ(Overview / Recoil / 銃の傾き / Drift / Spectrum)。行クリックでサブタブが連動更新。前半 vs 後半、ベスト vs ワースト等で過去全体を俯瞰。</p>
-        <img src="img/sessions.png" alt="Sessions" onerror="this.style.display='none'">
+        <h3>Sessions — Overview</h3>
+        <p>セッション一覧 + 選択行の集計。R95 / S2 / 反動 peak amplitude を shot 順に並べて、調子の山谷が一目で見える。</p>
+        <img src="img/sessions-overview.png" alt="Sessions Overview" onerror="this.style.display='none'">
       </div>
       <div class="tabtour-item">
-        <h3>Shots</h3>
+        <h3>Sessions — 反動 (Recoil)</h3>
+        <p>反動 peak / settle time / fall-through / direction を shot ごとに分析。オーバーレイ表示で「同じセッション内の反動の散らばり」が分かる。</p>
+        <img src="img/sessions-recoil.png" alt="Sessions Recoil" onerror="this.style.display='none'">
+      </div>
+      <div class="tabtour-item">
+        <h3>Sessions — 銃の傾き (Cant)</h3>
+        <p>射撃中の銃身傾きと、発射直前 1 秒の変化を時系列で。ベスト/ワースト shot の比較表示にも対応。</p>
+        <img src="img/sessions-cant.png" alt="Sessions Cant" onerror="this.style.display='none'">
+      </div>
+      <div class="tabtour-item">
+        <h3>Sessions — Drift</h3>
+        <p>shot ごとの平均 drift を散布図で。Cant とのコリレーション値も併記。</p>
+        <img src="img/sessions-drift.png" alt="Sessions Drift" onerror="this.style.display='none'">
+      </div>
+      <div class="tabtour-item">
+        <h3>Sessions — Spectrum</h3>
+        <p>pre-trigger の FFT パワースペクトル。<strong>呼吸 (青 0.15-0.5Hz)</strong>、<strong>心拍由来 (緑 0.8-2Hz)</strong>、<strong>力み (赤 8-12Hz)</strong> 帯域でハイライト。</p>
+        <img src="img/sessions-spectrum.png" alt="Sessions Spectrum" onerror="this.style.display='none'">
+      </div>
+      <div class="tabtour-item">
+        <h3>Shots — Series 別ブロック</h3>
         <p>session 内 shot を 10 発 Series ごとにブロック化。各 Series にターゲット + 弾着 + 集計テーブル + μ 行が付く本家風表示。Series 単位の PDF 出力にも対応。</p>
         <img src="img/shots.png" alt="Shots" onerror="this.style.display='none'">
       </div>

@@ -285,6 +285,32 @@ pre code { background: transparent; padding: 0; }
   max-width: 100%;
   border-radius: 6px;
   border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+/* --- Hero shot --- */
+.hero-shot {
+  max-width: 1100px;
+  margin: 32px auto 0;
+  padding: 0 24px;
+}
+.hero-shot img {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+}
+
+/* --- Lightbox-ish hover --- */
+.screens img,
+.tabtour-item img {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.screens img:hover,
+.tabtour-item img:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 /* --- FAQ --- */

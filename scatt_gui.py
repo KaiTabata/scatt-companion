@@ -4208,7 +4208,6 @@ class SettingsTab(QWidget):
             if self.cb_hr_mode.itemData(j) == cur_mode:
                 self.cb_hr_mode.setCurrentIndex(j); break
         form_h.addRow("ソース", self.cb_hr_mode)
-        from PyQt6.QtWidgets import QLineEdit
         self.le_hr_addr = QLineEdit()
         self.le_hr_addr.setPlaceholderText("空欄で自動スキャン")
         self.le_hr_addr.setText(SETTINGS.get("heart/device_address") or "")
