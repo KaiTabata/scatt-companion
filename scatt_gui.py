@@ -56,13 +56,12 @@ import scatt_target as T
 import scatt_update as UPD
 import scatt_profile as PR
 import scatt_home as HOME
+import scatt_paths as PATHS
 
 VERSION = "0.3.0"
 
 
-DEFAULT_DB = os.path.expanduser(
-    "~/Library/Application Support/SCATT Electronics/Scatt Expert/storage.dat"
-)
+DEFAULT_DB = PATHS.DEFAULT_SCATT_STORAGE
 SUSPICIOUS_RADIUS_MM = 200.0  # 発射点がターゲット中心から N mm 以上 = 誤反応とみなす
 
 
@@ -5676,6 +5675,9 @@ class MainWindow(QMainWindow):
 
 
 def _start_caffeinate():
+    """macOS のみ: 画面スリープを抑制。他 OS では何もしない。"""
+    if not PATHS.is_macos():
+        return None
     try:
         p = subprocess.Popen(["/usr/bin/caffeinate", "-d", "-i", "-w", str(os.getpid())])
         atexit.register(lambda: p.terminate())
@@ -5739,13 +5741,15 @@ def main():
     pal.setColor(QPalette.ColorRole.ButtonText, C.FG)
     app.setPalette(pal)
 
-    # ホーム画面 (条件付き)。受け入れたら profile/discipline が反映される
-    HOME.show_if_needed(None, PROFILES, T, SETTINGS, args.db)
+    # ホーム画面 (条件付き)。返り値: None=スキップ, 0=「始める」のみ, int=特定 session 選択
+    jump_sid = HOME.show_if_needed(None, PROFILES, T, SETTINGS, args.db)
 
     w = MainWindow(args.db, auto_live=auto_live, initial_trace=args.trace)
     if on_top:
         w.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
     w.show()
+    if isinstance(jump_sid, int) and jump_sid > 0:
+        w.set_session(jump_sid)
     sys.exit(app.exec())
 
 

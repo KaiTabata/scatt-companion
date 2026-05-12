@@ -29,9 +29,9 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-DEFAULT_EXTRA_DB = os.path.expanduser(
-    "~/Library/Application Support/scatt-prone-analyzer/extra.db"
-)
+import scatt_paths
+
+DEFAULT_EXTRA_DB = scatt_paths.DEFAULT_EXTRA_DB
 
 # Profile (複数射手) 対応のため active path を切替可能に。
 # scatt_profile.set_current() がここを書き換える。

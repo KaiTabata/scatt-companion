@@ -9,7 +9,10 @@
 - **起動時ホーム画面** (`scatt_home.py`): 射手 / 種目 / 最近のセッション / 今週・今月ダイジェストを 1 画面で確認 → 「始める」で本画面へ
   - 表示モード: 自動 (複数射手 or 初回のみ) / 毎回 / 表示しない (Settings から切替)
   - 「次回からこの画面を表示しない」チェックで即時 OFF
+  - 最近のセッション行をダブルクリックでそのセッションへ直接ジャンプ
 - **紹介ページのスクリーンショット**: GitHub Pages (https://kaitabata.github.io/scatt-analyzer/) に Dashboard / Sessions サブタブ 5 種 / Shots を掲載
+- **配布パス完成**: `make install-local` で /Applications/ への上書きインストール、`make dmg` で DMG 生成、GitHub Release v0.3.0 に DMG (157MB) を添付
+- **OS 別パス抽象化** (`scatt_paths.py`): macOS / Windows / Linux でアプリ永続データ・ログ・SCATT 保存先を分岐。Windows 移植の下地
 
 ### Fixed
 - Settings タブで `from PyQt6.QtWidgets import QLineEdit` の局所 import が QLineEdit を関数ローカル変数化していた問題 (起動時 UnboundLocalError)

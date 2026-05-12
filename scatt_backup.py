@@ -24,12 +24,10 @@ import platform
 import zipfile
 from pathlib import Path
 
-EXTRA_DB = Path.home() / "Library/Application Support/scatt-prone-analyzer/extra.db"
-SETTINGS_PLIST_CANDIDATES = [
-    # QSettings(org, app) で生成される候補
-    Path.home() / "Library/Preferences/com.scatt-prone.analyzer.plist",
-    Path.home() / "Library/Preferences/com.scatt-prone.analyzer.SCATT-Prone-Analyzer.plist",
-]
+import scatt_paths
+
+EXTRA_DB = Path(scatt_paths.DEFAULT_EXTRA_DB)
+SETTINGS_PLIST_CANDIDATES = scatt_paths.settings_files_for_backup()
 
 
 def _find_settings_plist() -> Path | None:

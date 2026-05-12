@@ -137,7 +137,9 @@ class HomeScreen(QDialog):
         self.db_path = db_path
         self.selected_profile_id = profiles_mgr.current_id()
         self.selected_discipline_key = discipline_mod.current_key()
+        self.selected_session_id: Optional[int] = None
         self.dont_show_again = False
+        self._recent_rows: list[dict] = []
         self._build()
 
     # ---- UI ----
@@ -199,10 +201,11 @@ class HomeScreen(QDialog):
         v.addWidget(self._hline())
 
         # 最近のセッション
-        rec_lbl = QLabel("最近のセッション")
+        rec_lbl = QLabel("最近のセッション  (ダブルクリックでそのセッションへ)")
         rec_lbl.setStyleSheet("font-weight: bold; font-size: 12px;")
         v.addWidget(rec_lbl)
         self.recent_table = QTableWidget()
+        self.recent_table.doubleClicked.connect(self._on_recent_double_clicked)
         self.recent_table.setColumnCount(3)
         self.recent_table.setHorizontalHeaderLabels(["日時", "姿勢", "shots"])
         self.recent_table.verticalHeader().setVisible(False)
@@ -255,6 +258,7 @@ class HomeScreen(QDialog):
 
     def _fill_recent(self):
         rows = fetch_recent_sessions(self.db_path, limit=5)
+        self._recent_rows = rows
         self.recent_table.setRowCount(len(rows) or 1)
         if not rows:
             it = QTableWidgetItem("(セッション履歴なし)")
@@ -267,6 +271,15 @@ class HomeScreen(QDialog):
             self.recent_table.setItem(r_i, 0, QTableWidgetItem(dt_str))
             self.recent_table.setItem(r_i, 1, QTableWidgetItem(r["position"]))
             self.recent_table.setItem(r_i, 2, QTableWidgetItem(str(r["n_shots"])))
+
+    def _on_recent_double_clicked(self, index):
+        r = index.row()
+        if 0 <= r < len(self._recent_rows):
+            self.selected_session_id = self._recent_rows[r]["sid"]
+            self.selected_profile_id = self.profile_combo.currentData()
+            self.selected_discipline_key = self.disc_combo.currentData()
+            self.dont_show_again = self.cb_dont_show.isChecked()
+            self.accept()
 
     def _fill_digest(self):
         d = fetch_digest(self.db_path)
@@ -297,18 +310,21 @@ class HomeScreen(QDialog):
         self.accept()
 
 
-def show_if_needed(parent, profiles_mgr, discipline_mod, settings, db_path: str) -> bool:
-    """条件を満たすときだけ表示。返り値: True=ユーザが「始める」、False=スキップ/非表示。
+def show_if_needed(parent, profiles_mgr, discipline_mod, settings, db_path: str) -> Optional[int]:
+    """条件を満たすときだけ表示。
+
+    返り値:
+      None  → 表示しなかった / スキップされた
+      int   → ユーザが選んだ session_id (ジャンプ先)
+      0     → 「始める」されたが特定 session の選択なし
 
     accept された場合は profile・discipline を実際に切替、Settings に反映する。
     """
     if not should_show(settings, profiles_mgr):
-        return False
+        return None
     dlg = HomeScreen(parent, profiles_mgr, discipline_mod, settings, db_path)
     if dlg.exec() != QDialog.DialogCode.Accepted:
-        # スキップしても seen は立てない (次回も auto 判定にかかる)
-        return False
-    # 選択を反映
+        return None
     profiles_mgr.set_current(dlg.selected_profile_id)
     if dlg.selected_discipline_key != discipline_mod.current_key():
         settings.set("discipline", dlg.selected_discipline_key)
@@ -316,4 +332,4 @@ def show_if_needed(parent, profiles_mgr, discipline_mod, settings, db_path: str)
     settings.set("home/seen", True)
     if dlg.dont_show_again:
         settings.set("home/show_on_startup", "never")
-    return True
+    return dlg.selected_session_id if dlg.selected_session_id is not None else 0

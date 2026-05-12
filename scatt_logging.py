@@ -17,7 +17,9 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
-LOG_DIR = Path.home() / "Library/Logs/scatt-analyzer"
+import scatt_paths
+
+LOG_DIR = scatt_paths.logs_dir()
 LOG_FILE = LOG_DIR / "app.log"
 
 _logger: Optional[logging.Logger] = None

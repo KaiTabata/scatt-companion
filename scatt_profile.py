@@ -28,10 +28,9 @@ from pathlib import Path
 from typing import Optional
 
 import scatt_storage as ST
+import scatt_paths
 
-PROFILES_DIR = os.path.expanduser(
-    "~/Library/Application Support/scatt-prone-analyzer/profiles"
-)
+PROFILES_DIR = scatt_paths.PROFILES_DIR
 
 
 @dataclass
