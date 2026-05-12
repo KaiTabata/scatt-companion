@@ -2,6 +2,8 @@
 
 SCATT Expert の補助分析ツール。伏射(prone)に特化、本家 SCATT が出さない補助指標を提供する。
 
+**紹介ページ**: <https://kaitabata.github.io/scatt-analyzer/>
+
 **SCATT Electronics の公式ソフトではありません**。SCATT が保存した個人射撃データ(`storage.dat`)をローカルで読み取って解析する非公式の補助ツール。
 
 ## 機能
