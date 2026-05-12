@@ -4,7 +4,7 @@
 PYTHON ?= /opt/homebrew/bin/python3.10
 DB     ?= $(HOME)/Library/Application Support/SCATT Electronics/Scatt Expert/storage.dat
 
-.PHONY: help gui watch watch-full check install clean concurrency-test ble-scan app app-clean app-sign icon dmg test
+.PHONY: help gui watch watch-full check install clean concurrency-test ble-scan app app-clean app-sign icon dmg test install-local
 
 help:
 	@echo "SCATT データ解析ツール"
@@ -17,6 +17,7 @@ help:
 	@echo ""
 	@echo "  make app                .app バンドルをビルド (dist/SCATT Prone Analyzer.app)"
 	@echo "  make app-sign           ビルド後の .app に ad-hoc 署名"
+	@echo "  make install-local      .app を /Applications/ にインストール (上書き)"
 	@echo "  make dmg                .app を DMG にまとめる (dist/scatt-prone-analyzer-VER.dmg)"
 	@echo "  make app-clean          build/ dist/ を削除"
 	@echo "  make check              環境チェック (Python・依存・DB の存在)"
@@ -71,6 +72,23 @@ app: app-clean icon
 app-sign:
 	@codesign --force --deep --sign - "dist/SCATT Prone Analyzer.app"
 	@echo "ad-hoc signed."
+
+# 自分の Mac の /Applications/ に上書きインストール
+install-local: app app-sign
+	@test -d "dist/SCATT Prone Analyzer.app" || (echo "make app 失敗"; exit 1)
+	@if [ -d "/Applications/SCATT Prone Analyzer.app" ]; then \
+	    echo "→ 既存版を削除"; \
+	    rm -rf "/Applications/SCATT Prone Analyzer.app"; \
+	fi
+	@echo "→ /Applications/ にコピー"
+	@cp -R "dist/SCATT Prone Analyzer.app" "/Applications/"
+	@codesign --force --deep --sign - "/Applications/SCATT Prone Analyzer.app" 2>&1 | grep -v "failed strict validation" || true
+	@xattr -dr com.apple.quarantine "/Applications/SCATT Prone Analyzer.app" 2>/dev/null || true
+	@/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+	    -f "/Applications/SCATT Prone Analyzer.app" 2>/dev/null || true
+	@echo ""
+	@echo "インストール完了: /Applications/SCATT Prone Analyzer.app"
+	@echo "起動: open '/Applications/SCATT Prone Analyzer.app'"
 
 app-clean:
 	rm -rf build dist

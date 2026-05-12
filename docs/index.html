@@ -35,7 +35,8 @@
       50m ライフル / 10m エアライフル / 10m エアピストルに対応。ローカル動作・オフライン完結。
     </p>
     <div class="hero-cta">
-      <a class="btn primary" href="#install">インストール</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.3.0/scatt-prone-analyzer-0.3.0.dmg">DMG をダウンロード (v0.3.0)</a>
+      <a class="btn secondary" href="#install">インストール手順</a>
       <a class="btn secondary" href="https://github.com/KaiTabata/scatt-analyzer" target="_blank" rel="noopener">GitHub</a>
     </div>
     <p class="hero-note">SCATT Electronics 公式ではありません。Apache License 2.0。</p>
@@ -174,10 +175,18 @@
 <section id="install" class="section bg-alt">
   <div class="container">
     <h2>インストール</h2>
-    <h3>方法 A: .app バンドル (近日配布予定)</h3>
-    <p>DMG をダウンロードして Applications にドラッグ。初回起動は右クリック → 開く。</p>
+    <h3>方法 A: DMG ダウンロード (推奨)</h3>
+    <p>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.3.0/scatt-prone-analyzer-0.3.0.dmg">scatt-prone-analyzer-0.3.0.dmg (約 150MB)</a>
+    </p>
+    <ol>
+      <li>DMG をダブルクリックで開く</li>
+      <li><code>SCATT Prone Analyzer.app</code> を <code>Applications</code> フォルダにドラッグ</li>
+      <li>初回起動は Applications フォルダで <strong>右クリック → 開く</strong>(Gatekeeper 警告に「開く」で進む)</li>
+    </ol>
+    <p>署名は ad-hoc(Apple Developer Program 未加入のため公証なし)。気になる場合は方法 B のソースビルドが選べます。</p>
 
-    <h3>方法 B: git clone (今すぐ)</h3>
+    <h3>方法 B: git clone (ソースから)</h3>
     <pre><code># 前提: macOS, Homebrew, Python 3.10+
 brew install python@3.10
 git clone https://github.com/KaiTabata/scatt-analyzer.git
