@@ -5372,9 +5372,8 @@ def main():
     args = ap.parse_args()
     if not os.path.exists(args.db):
         LOG.error(f"db not found: {args.db}", exc_info=False)
-        # GUI 起動して通知
-        from PyQt6.QtWidgets import QApplication, QMessageBox
-        app = QApplication(sys.argv)
+        # GUI ダイアログで通知 (グローバル QApplication を使う、ローカル import しない)
+        _app = QApplication(sys.argv)
         QMessageBox.critical(
             None, "SCATT データが見つかりません",
             f"SCATT Expert の storage.dat が見つかりません:\n{args.db}\n\n"
