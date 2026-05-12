@@ -500,15 +500,15 @@ def _metric_value(t: dict, key: str) -> float | None:
 
 # 指標定義: (key, ラベル, 単位, "low_good"|"high_good"|"abs_low_good"|"info", 表示桁)
 METRICS = [
-    # ----- SCATT 互換 (本家と同じ表記) -----
-    ("ten_a_1s",         "10a  10点圏 滞在 (1秒)",     "%",    "high_good",    1),
-    ("ten_a_05s",        "10a-0.5  10点圏 滞在 (0.5秒)", "%",  "high_good",    1),
-    ("r95_1",            "S1  安定 (1秒)",             "mm",   "low_good",     2),
-    ("r95_05",           "S2  安定 (0.5秒)",           "mm",   "low_good",     2),
+    # ----- SCATT 互換 (本家と同じ略号のみ) -----
+    ("ten_a_1s",         "10a",                          "%",    "high_good",    1),
+    ("ten_a_05s",        "10a-0.5",                      "%",    "high_good",    1),
+    ("r95_1",            "S1",                           "mm",   "low_good",     2),
+    ("r95_05",           "S2",                           "mm",   "low_good",     2),
     # ----- 補助指標 -----
-    ("ten_b_1s",         "10b  10点中央 滞在 (1秒)",   "%",    "high_good",    1),
-    ("ten_b_05s",        "10b-0.5  10点中央 (0.5秒)",  "%",    "high_good",    1),
-    ("nine_c_1s",        "9c  9点圏 滞在 (1秒)",       "%",    "high_good",    1),
+    ("ten_b_1s",         "10b",                          "%",    "high_good",    1),
+    ("ten_b_05s",        "10b-0.5",                      "%",    "high_good",    1),
+    ("nine_c_1s",        "9c",                           "%",    "high_good",    1),
     ("r95_2",            "R95 直前 2秒",                "mm",   "low_good",     2),
     ("r95_3",            "R95 直前 3秒",                "mm",   "low_good",     2),
     ("timing_v",         "撃発タイミング (発射時の動き)", "mm/s","low_good",     1),
@@ -1437,14 +1437,29 @@ class DashboardTab(QWidget):
         kpi_grid = QGridLayout()
         kpi_grid.setHorizontalSpacing(6); kpi_grid.setVerticalSpacing(6)
         kpi_keys = [SETTINGS.get(f"layout/hero_kpi_{i}") for i in range(1, 5)]
+        # ツールチップ用の指標説明 (本家略号 → 日本語詳細)
+        tooltips = {
+            "ten_a_1s":     "10a — 直前 1 秒で 10 点圏内に照準があった時間 (%)",
+            "ten_a_05s":    "10a-0.5 — 直前 0.5 秒で 10 点圏内にあった時間 (%)",
+            "ten_b_1s":     "10b — 直前 1 秒で 10 点中央 (inner-10) 内にあった時間 (%)",
+            "ten_b_05s":    "10b-0.5 — 直前 0.5 秒で 10 点中央内にあった時間 (%)",
+            "nine_c_1s":    "9c — 直前 1 秒で 9 点圏内にあった時間 (%)",
+            "r95_1":        "S1 — 直前 1 秒のホールド円半径 R95 (mm)",
+            "r95_05":       "S2 — 直前 0.5 秒のホールド円半径 R95 (mm)",
+        }
         for i, key in enumerate(kpi_keys):
             metric = next((m for m in METRICS if m[0] == key), None)
             if metric is None:
                 continue
             _, label, unit, _, _ = metric
             card = _hero_card(label, unit)
+            if key in tooltips:
+                card[0].setToolTip(tooltips[key])
+            else:
+                # 略号でない指標 (撃発タイミング等) は label をそのままツールチップに
+                card[0].setToolTip(label)
             kpi_grid.addWidget(card[0], i // 2, i % 2)
-            self.hero_cards.append(card + (key,))  # 5要素タプル
+            self.hero_cards.append(card + (key,))
         # 既存 layout をクリア
         while self._hero_row_layout.count():
             item = self._hero_row_layout.takeAt(0)
@@ -1576,11 +1591,24 @@ class DashboardTab(QWidget):
             return -z_scores[k]
         sorted_metrics = sorted(METRICS, key=sort_key)
 
+        # 略号→日本語説明 (ツールチップ用)
+        _metric_tooltips = {
+            "ten_a_1s":     "10a — 直前 1 秒で 10 点圏内 (R≤5.2mm) にいた時間 (%)",
+            "ten_a_05s":    "10a-0.5 — 直前 0.5 秒で 10 点圏内にいた時間 (%)",
+            "ten_b_1s":     "10b — 直前 1 秒で 10 点中央 (R≤2.5mm) にいた時間 (%)",
+            "ten_b_05s":    "10b-0.5 — 直前 0.5 秒で 10 点中央にいた時間 (%)",
+            "nine_c_1s":    "9c — 直前 1 秒で 9 点圏内 (R≤13.2mm) にいた時間 (%)",
+            "r95_1":        "S1 — 直前 1 秒のホールド円半径 R95 (mm)",
+            "r95_05":       "S2 — 直前 0.5 秒のホールド円半径 R95 (mm)",
+            "r95_2":        "直前 2 秒のホールド円半径 R95 (mm)",
+            "r95_3":        "直前 3 秒のホールド円半径 R95 (mm)",
+        }
         for row, (key, label, unit, direction, digits) in enumerate(sorted_metrics):
-            # ラベル列を更新(ソートされたので)
             lbl_item = self.metrics_table.item(row, 0)
             lbl_item.setText(label)
             lbl_item.setForeground(QBrush(C.FG_MUTED))
+            tt = _metric_tooltips.get(key, label)
+            lbl_item.setToolTip(tt)
 
             v = _metric_value(cur, key)
             stat = stats.get(key)
