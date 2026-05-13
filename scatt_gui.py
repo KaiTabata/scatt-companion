@@ -3179,6 +3179,125 @@ GRAPH_KINDS.append(("followthrough_overlay", "発射前後 軌跡 重ね",      
 GRAPH_KINDS.append(("centroid_trace",        "ホールド軌跡 (重心中心)",   _gr_centroid_trace))
 
 
+# ----- AR 特化: 相関グラフ -----
+
+def _shot_metric(s: dict, key: str) -> float | None:
+    """session_shots 内の 1 shot dict から指標値を取り出す。
+
+    fire_r (中心からの距離 mm) のような session shot 固有のキーにも対応。
+    """
+    # fire_r は fire_x/fire_y から計算
+    if key == "fire_r":
+        x = s.get("fire_x"); y = s.get("fire_y")
+        if x is None or y is None: return None
+        return float(np.hypot(x, y))
+    # それ以外は _metric_value 経由
+    try:
+        v = _metric_value(s, key)
+    except (KeyError, TypeError):
+        return None
+    if v is None or not np.isfinite(v): return None
+    return float(v)
+
+
+def _scatter_corr(pw, sessshots, key_x: str, key_y: str,
+                  title: str, label_x: str, label_y: str,
+                  unit_x: str = "", unit_y: str = ""):
+    """汎用 shot 単位 散布図 + 相関係数 + 回帰直線。"""
+    pw.clear()
+    _setup_plot(pw, title=title, x_label=label_x, x_unit=unit_x,
+                y_label=label_y, y_unit=unit_y)
+    if not sessshots:
+        _empty_message(pw, "shot がありません")
+        return
+    xs, ys = [], []
+    for s in sessshots:
+        x = _shot_metric(s, key_x)
+        y = _shot_metric(s, key_y)
+        if x is None or y is None:
+            continue
+        xs.append(x); ys.append(y)
+    if len(xs) < 3:
+        _empty_message(pw, f"データが不足 (n={len(xs)})")
+        return
+    xs = np.array(xs); ys = np.array(ys)
+    # 散布点
+    pw.plot(xs, ys, pen=None, symbol='o', symbolSize=6,
+            symbolBrush=C.ACCENT_B, symbolPen=pg.mkPen(None))
+    # 回帰直線 (最小二乗)
+    if np.std(xs) > 1e-6:
+        a, b = np.polyfit(xs, ys, 1)
+        xx = np.array([xs.min(), xs.max()])
+        pw.plot(xx, a*xx + b, pen=pg.mkPen(C.ACCENT_R, width=1.2,
+                                            style=Qt.PenStyle.DashLine))
+    # 相関係数をタイトルに
+    if np.std(xs) > 1e-6 and np.std(ys) > 1e-6:
+        r = float(np.corrcoef(xs, ys)[0, 1])
+        sign = "+" if r > 0 else ""
+        pw.setTitle(f"{title}  r={sign}{r:.2f}  n={len(xs)}",
+                    color=_color_hex(C.FG), size="11pt")
+
+
+def _gr_s1_vs_fire_r(pw, t_arr, samples, sr, sessshots):
+    """S1 (照準速度) と 着弾分布距離 fire_r の相関 — AR で重要。"""
+    _scatter_corr(pw, sessshots, "s1_mm_s", "fire_r",
+                  "S1 vs 着弾点距離  (速度↓ で命中↑ なら効果実証)",
+                  "S1 直前1秒の速度", "中心からの距離",
+                  "mm/s", "mm")
+
+def _gr_centroid_vs_ten_a(pw, t_arr, samples, sr, sessshots):
+    """重心 R95 (銃の安定度) と 10a-0.5 (圏内時間) の相関。"""
+    _scatter_corr(pw, sessshots, "centroid_r95_05", "ten_a_05s",
+                  "重心 R95 vs 10a-0.5  (銃の安定度 vs 圏内時間)",
+                  "重心 R95 直前 0.5s", "10a-0.5",
+                  "mm", "%")
+
+def _gr_s1_vs_holdtime(pw, t_arr, samples, sr, sessshots):
+    """S1 と ホールド時間の相関 — 「粘れてないと速い」現象を可視化。"""
+    _scatter_corr(pw, sessshots, "s1_mm_s", "hold_s",
+                  "S1 vs ホールド時間",
+                  "S1", "ホールド時間",
+                  "mm/s", "秒")
+
+def _gr_followthrough_vs_ten_a(pw, t_arr, samples, sr, sessshots):
+    """フォロースルー比 vs 10a-0.5。"""
+    _scatter_corr(pw, sessshots, "followthrough_ratio", "ten_a_05s",
+                  "発射前後 R95 比 vs 10a-0.5",
+                  "発射前後 R95 比", "10a-0.5",
+                  "", "%")
+
+def _gr_s1_history_ar(pw, t_arr, samples, sr, sessshots):
+    """shot 順 S1 推移 — AR でのセッション内の調子の波を見る。"""
+    pw.clear()
+    _setup_plot(pw, title="S1 推移  (shot 順)",
+                x_label="shot 番号 (session 内)",
+                y_label="S1 直前1秒 平均速度", y_unit="mm/s")
+    if not sessshots:
+        _empty_message(pw, "shot がありません")
+        return
+    xs, ys = [], []
+    for i, s in enumerate(sessshots):
+        v = _shot_metric(s, "s1_mm_s")
+        if v is not None:
+            xs.append(i + 1); ys.append(v)
+    if not xs: return
+    pw.plot(xs, ys, pen=pg.mkPen(C.ACCENT_B, width=1.5),
+            symbol='o', symbolSize=5, symbolBrush=C.ACCENT_B,
+            symbolPen=pg.mkPen(None))
+    # 移動平均 (10 発)
+    if len(ys) >= 10:
+        ma = np.convolve(ys, np.ones(10)/10, mode='valid')
+        ma_x = list(range(10, len(ys) + 1))
+        pw.plot(ma_x, ma, pen=pg.mkPen(C.ACCENT_R, width=2))
+
+
+GRAPH_KINDS.append(("s1_vs_fire_r",         "S1 vs 着弾距離  (AR 相関)",   _gr_s1_vs_fire_r))
+GRAPH_KINDS.append(("centroid_vs_ten_a",    "重心 R95 vs 10a-0.5",         _gr_centroid_vs_ten_a))
+GRAPH_KINDS.append(("s1_vs_holdtime",       "S1 vs ホールド時間",           _gr_s1_vs_holdtime))
+GRAPH_KINDS.append(("followthrough_vs_ten_a", "発射前後 R95 比 vs 10a-0.5", _gr_followthrough_vs_ten_a))
+GRAPH_KINDS.append(("s1_history",           "S1 推移  (shot 順)",          _gr_s1_history_ar))
+
+
 class CantTab(QWidget):
     """Cant (銃身ロール) のセッション単位レビュー専用タブ。
 
