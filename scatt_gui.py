@@ -5238,7 +5238,10 @@ class HelpTab(QWidget):
 
 
 class TargetTab(QGraphicsView):
-    """ISSF ターゲット (射撃種目に応じる) + 軌跡 (発射前/後 色分け) + 発射点マーカー。"""
+    """ISSF ターゲット (射撃種目に応じる) + 軌跡 (発射前/後 色分け) + 発射点マーカー。
+
+    右クリック → 再生 で軌跡をアニメーション再生 (0.5x / 1x / 2x 速度切替可)。
+    """
 
     def __init__(self):
         super().__init__()
@@ -5254,6 +5257,18 @@ class TargetTab(QGraphicsView):
         self.setFrameShape(QGraphicsView.Shape.NoFrame)
         self._draw_target()
         self._dyn = []
+        # 再生用
+        self._play_samples: list | None = None
+        self._play_shots: list | None = None
+        self._play_sample_rate: float = 120.0
+        self._play_idx: int = 0
+        self._play_speed: float = 1.0
+        from PyQt6.QtCore import QTimer as _QT
+        self._play_timer = _QT(self)
+        self._play_timer.timeout.connect(self._play_step)
+        # コンテキストメニュー (右クリック)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._on_context_menu)
 
     def _draw_target(self):
         sc = self.OUTER_DIAM_MM / 154.4
@@ -5339,7 +5354,72 @@ class TargetTab(QGraphicsView):
                                                     QPen(Qt.PenStyle.NoPen), QBrush(C.ACCENT_Y)))
 
     def update_trace(self, samples, shots, sample_rate):
+        # 再生用にもキャッシュ
+        self._play_samples = list(samples) if samples else None
+        self._play_shots = list(shots) if shots else None
+        self._play_sample_rate = float(sample_rate)
+        # 再生中なら停止
+        if self._play_timer.isActive():
+            self._play_timer.stop()
         self.show_trace(samples, shots)
+
+    def _on_context_menu(self, pos):
+        from PyQt6.QtWidgets import QMenu
+        menu = QMenu(self)
+        if self._play_timer.isActive():
+            act_stop = menu.addAction("⏹ 停止")
+            act_stop.triggered.connect(self.stop_playback)
+        else:
+            if self._play_samples:
+                act_play = menu.addAction("▶ 軌跡を再生")
+                act_play.triggered.connect(self.start_playback)
+        menu.addSeparator()
+        spd_menu = menu.addMenu("速度")
+        for factor in [0.25, 0.5, 1.0, 2.0, 4.0]:
+            a = spd_menu.addAction(f"× {factor}")
+            a.setCheckable(True)
+            a.setChecked(abs(self._play_speed - factor) < 1e-3)
+            a.triggered.connect(lambda _, f=factor: self.set_playback_speed(f))
+        menu.exec(self.mapToGlobal(pos))
+
+    def start_playback(self):
+        """軌跡アニメーション開始 (start から trace_offset+0.5s 後まで)。"""
+        if not self._play_samples:
+            return
+        self._play_idx = 0
+        # 25 fps 相当の描画間隔
+        ms = int(round(1000 / (25 * self._play_speed)))
+        self._play_timer.start(max(10, ms))
+
+    def stop_playback(self):
+        self._play_timer.stop()
+        if self._play_samples:
+            self.show_trace(self._play_samples, self._play_shots)
+
+    def set_playback_speed(self, factor: float):
+        self._play_speed = factor
+        if self._play_timer.isActive():
+            ms = int(round(1000 / (25 * self._play_speed)))
+            self._play_timer.setInterval(max(10, ms))
+
+    def _play_step(self):
+        """1 frame 分進めて部分軌跡を描画。"""
+        if not self._play_samples:
+            self._play_timer.stop(); return
+        sr = self._play_sample_rate
+        # 1 step あたり (1/25 秒) * speed 倍 のサンプルを進める
+        step_samples = max(1, int(round(sr / 25 * self._play_speed)))
+        self._play_idx = min(len(self._play_samples), self._play_idx + step_samples)
+        if self._play_idx >= len(self._play_samples):
+            self._play_timer.stop()
+            self.show_trace(self._play_samples, self._play_shots)
+            return
+        # 部分軌跡を描画
+        partial = self._play_samples[:self._play_idx]
+        # 発射点を超えたなら shots を渡す、そうでなければ None
+        toff = self._play_shots[0]["trace_offset"] if self._play_shots else None
+        shots_partial = self._play_shots if (toff is not None and toff < self._play_idx) else None
+        self.show_trace(partial, shots_partial)
 
     def resizeEvent(self, e):
         r = self.OUTER_DIAM_MM / 2.0 * 1.23
