@@ -100,12 +100,24 @@ def velocity_stats(v: np.ndarray) -> dict:
 # ----- 周波数解析 (FFT) -----
 
 def spectrum(signal: np.ndarray, sample_rate: float,
-             detrend: bool = True, hann: bool = True) -> tuple[np.ndarray, np.ndarray]:
-    """単側 FFT。返り値 (freq_hz, magnitude)。"""
+             detrend: bool = True, hann: bool = True,
+             mode: str = "position") -> tuple[np.ndarray, np.ndarray]:
+    """単側 FFT。返り値 (freq_hz, magnitude)。
+
+    mode:
+      "position"  生の位置信号をそのまま FFT (低周波 drift が支配的)
+      "velocity"  1 次差分 (= 速度) を FFT。tremor 帯のピークが見やすい
+    """
     n = len(signal)
     if n < 16:
         return np.zeros(0), np.zeros(0)
     x = signal.astype(np.float64)
+    if mode == "velocity":
+        # 速度: 隣接サンプルの差分 × sample_rate (mm/s)
+        x = np.diff(x) * sample_rate
+        n = len(x)
+        if n < 16:
+            return np.zeros(0), np.zeros(0)
     if detrend:
         x = x - np.mean(x)
     if hann:
@@ -114,6 +126,15 @@ def spectrum(signal: np.ndarray, sample_rate: float,
     mag = np.abs(spec) / n
     freq = np.fft.rfftfreq(n, d=1.0 / sample_rate)
     return freq, mag
+
+
+def smooth_mag(mag: np.ndarray, window: int = 3) -> np.ndarray:
+    """magnitude を移動平均でスムージング (視認性向上)。window が偶数なら +1。"""
+    if len(mag) < 3 or window < 2:
+        return mag
+    w = window if window % 2 == 1 else window + 1
+    kernel = np.ones(w) / w
+    return np.convolve(mag, kernel, mode="same")
 
 
 def tremor_band(freq: np.ndarray, mag: np.ndarray,
