@@ -226,6 +226,12 @@ pg.setConfigOption('foreground', '#333')
 
 # --- 復号 ---
 def decode_trace(blob: bytes):
+    """SCATT trace BLOB を (x, y, cant) サンプル列に展開。
+
+    フォーマット自動判定:
+      - 新フォーマット (2021+ 想定): 1 サンプル 12 バイト (X, Y, Cant 各 float32 BE)
+      - 旧フォーマット (〜2020 想定): 1 サンプル 8 バイト (X, Y のみ、Cant=0)
+    """
     if not blob or blob[0] != 0x01:
         raise ValueError("bad version byte")
     body = blob[1:]
@@ -238,9 +244,20 @@ def decode_trace(blob: bytes):
     if raw[:4] != b"\x0a\x0b\x0c\x0d":
         raise ValueError("bad magic")
     n = struct.unpack(">H", raw[12:14])[0]
-    return [
-        struct.unpack(">fff", raw[15 + i * 12:15 + (i + 1) * 12]) for i in range(n)
-    ]
+    # サンプル本体は offset 15 以降。フォーマット判定: 残り bytes / n が 12 or 8
+    payload_size = len(raw) - 15
+    if n > 0 and payload_size == n * 12:
+        # 新フォーマット (X, Y, Cant)
+        return [
+            struct.unpack(">fff", raw[15 + i * 12:15 + (i + 1) * 12]) for i in range(n)
+        ]
+    elif n > 0 and payload_size == n * 8:
+        # 旧フォーマット (X, Y のみ) — Cant を 0 で埋める
+        return [
+            struct.unpack(">ff", raw[15 + i * 8:15 + (i + 1) * 8]) + (0.0,) for i in range(n)
+        ]
+    else:
+        raise ValueError(f"unknown sample format: n={n}, payload={payload_size}")
 
 
 def fetch_shots_for_trace(conn: sqlite3.Connection, trace_id: int) -> list[dict]:
