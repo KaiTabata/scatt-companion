@@ -118,6 +118,87 @@ def mean_velocity_last(t: TraceArrays, seconds: float) -> float:
     return float(np.mean(v))
 
 
+def centroid_r95(t: TraceArrays, seconds: float | None = None) -> float:
+    """発射前 (一部 or 全体) の trace 重心基準の R95 [mm]。
+
+    ターゲット中心 (0,0) ではなく、その時間窓内の重心 を原点として測る。
+    「銃そのものがどれだけ止まっているか」を見る (ターゲット非依存)。
+
+    seconds=None なら pre-trigger 全体、数値なら直前 X 秒。
+    ホールド練習モード用。
+    """
+    if t.trace_offset is None or t.trace_offset < 2:
+        return 0.0
+    if seconds is None:
+        start = 0
+    else:
+        n_window = int(round(seconds * t.sample_rate))
+        start = max(0, t.trace_offset - n_window)
+    end = t.trace_offset
+    if end - start < 2:
+        return 0.0
+    seg = t.samples[start:end, :2]
+    cx, cy = float(np.mean(seg[:, 0])), float(np.mean(seg[:, 1]))
+    r = np.hypot(seg[:, 0] - cx, seg[:, 1] - cy)
+    return float(np.percentile(r, 95))
+
+
+def followthrough_ratio(t: TraceArrays) -> float:
+    """発射前後 R95 比 = post_05_r95 / r95_05。
+
+    1.0 に近いほど発射前と発射後の安定度が等しい (良いフォロースルー)。
+    大きいほど発射時に銃が大きくぶれた (悪い)。
+    """
+    if t.trace_offset is None:
+        return 0.0
+    # 発射前 0.5 秒の R95 (target 基準)
+    sr = t.sample_rate
+    n_05 = int(round(0.5 * sr))
+    pre_start = max(0, t.trace_offset - n_05)
+    pre = t.samples[pre_start:t.trace_offset, :2]
+    if len(pre) < 2:
+        return 0.0
+    r_pre = np.hypot(pre[:, 0], pre[:, 1])
+    r95_pre = float(np.percentile(r_pre, 95))
+    # 発射後 0.5 秒 以降 (フォロースルー)
+    post_start = t.trace_offset + n_05
+    post_end = min(len(t.samples), t.trace_offset + int(1.0 * sr))
+    if post_end - post_start < 2:
+        return 0.0
+    post = t.samples[post_start:post_end, :2]
+    r_post = np.hypot(post[:, 0], post[:, 1])
+    r95_post = float(np.percentile(r_post, 95))
+    if r95_pre < 1e-6:
+        return 0.0
+    return r95_post / r95_pre
+
+
+def post_v_mean(t: TraceArrays, window_s: float = 0.5) -> float:
+    """発射後 window_s 秒の平均速度 [mm/s]。フォロースルー中も動いてないか。"""
+    if t.trace_offset is None:
+        return 0.0
+    sr = t.sample_rate
+    start = t.trace_offset
+    end = min(len(t.samples), start + int(window_s * sr))
+    if end - start < 2:
+        return 0.0
+    seg = t.samples[start:end, :2]
+    dx = np.diff(seg[:, 0]); dy = np.diff(seg[:, 1])
+    v = np.hypot(dx, dy) * sr
+    return float(np.mean(v))
+
+
+def cant_std_session(shot_cant_values: list[float]) -> float:
+    """session 内 shot の発射時 cant 角の標準偏差 [deg]。
+
+    AR で「shot 毎の銃傾きの一貫性」を見る。値が小さいほど一貫した姿勢。
+    """
+    valid = [c for c in shot_cant_values if c is not None]
+    if len(valid) < 2:
+        return 0.0
+    return float(np.std(np.degrees(valid)))
+
+
 def s2_rolling_p25(t: TraceArrays, lookback_s: float = 1.0,
                    window_s: float = 0.25) -> float:
     """SCATT 互換 S2 近似値 [mm/s]。
@@ -591,7 +672,11 @@ def summarize(t: TraceArrays) -> dict:
         "stability": stability_multi(t, (0.5, 1.0, 2.0, 3.0)),
         # SCATT 本家互換指標 (平均照準速度 mm/s)
         "s1_mm_s":  mean_velocity_last(t, 1.0),      # 直前 1.0s 平均 = SCATT S1
-        "s2_mm_s":  s2_rolling_p25(t, 1.0, 0.25),    # 近似値 (SCATT 内部式は逆解析が必要)
+        # 本ソフト独自の追加指標
+        "centroid_r95_05": centroid_r95(t, 0.5),     # 直前 0.5 秒の重心 R95 (mm)
+        "centroid_r95_full": centroid_r95(t, None),  # pre-trigger 全体の重心 R95 (mm)
+        "followthrough_ratio": followthrough_ratio(t),  # post_05_r95 / r95_05
+        "post_v_mean_05": post_v_mean(t, 0.5),       # 発射後 0.5s 平均速度 (mm/s)
         "last_05s": last_window_quality(t, 0.5),
         "last_10s": last_window_quality(t, 1.0),
         "phases": segment_phases(t),

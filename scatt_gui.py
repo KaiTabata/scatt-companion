@@ -58,6 +58,7 @@ import scatt_profile as PR
 import scatt_home as HOME
 import scatt_paths as PATHS
 import scatt_metric_docs as DOCS
+import scatt_modes as MODES
 
 VERSION = "0.3.0"
 
@@ -138,6 +139,8 @@ class S:
         # ホーム画面 (Welcome ダイアログ)
         "home/show_on_startup": "auto",  # auto | always | never
         "home/seen": False,
+        # モード (prone / ar / hold_practice)
+        "mode": "prone",
     }
 
     def __init__(self):
@@ -178,6 +181,8 @@ class S:
 SETTINGS = S()
 # 起動時に射撃種目を適用 (50m ライフル / 10m エアライフル / 10m エアピストル)
 T.set_current(SETTINGS.get("discipline") or "rifle_50m")
+# モード (prone / ar / hold_practice) を適用
+MODES.set_current(SETTINGS.get("mode") or "prone")
 # 射手 Profile (extra.db のパスを切替)
 PROFILES = PR.ProfileManager(SETTINGS)
 ST.set_active_path(PROFILES.current().db)
@@ -5150,9 +5155,10 @@ class MainWindow(QMainWindow):
         self.tabs.setElideMode(Qt.TextElideMode.ElideNone)
         self.tabs.setDocumentMode(True)
         # ホームタブ (常に先頭)
-        self.home_tab = HOME.HomeTab(PROFILES, T, SETTINGS, db_path)
+        self.home_tab = HOME.HomeTab(PROFILES, T, SETTINGS, db_path, modes_mod=MODES)
         self.home_tab.start_clicked.connect(self._on_home_start)
         self.home_tab.session_jump.connect(self._on_home_session_jump)
+        self.home_tab.mode_changed.connect(self._on_mode_changed)
         self.tabs.addTab(self.home_tab, "ホーム")
         # 表示する tab を SETTINGS から
         tab_defs = [
@@ -5585,14 +5591,17 @@ class MainWindow(QMainWindow):
                 self._refresh_profile_selector()
                 self._reload_after_profile_switch()
 
-    def _on_home_start(self, profile_id: str, discipline_key: str):
+    def _on_home_start(self, profile_id: str, discipline_key: str, mode_key: str = None):
         """ホームタブの「始める」 → Dashboard に切り替えて反映。"""
-        # profile / discipline は HomeTab 内で SETTINGS / PROFILES に反映済み
-        # ToolBar の selector を再描画
+        # profile / discipline / mode は HomeTab 内で SETTINGS / PROFILES に反映済み
         self._refresh_profile_selector()
-        # discipline 変更が target geometry に影響するが再起動を要さず再描画は限界あり
-        # → minimum で session のキャッシュを捨てる
         self._session_cache.clear()
+        # mode 変更による layout 変更を Dashboard に反映
+        try:
+            self.dashboard._rebuild_hero_row()
+            self.dashboard._rebuild_graphs() if hasattr(self.dashboard, "_rebuild_graphs") else None
+        except Exception as e:
+            LOG.warn(f"dashboard rebuild on mode switch failed: {e}")
         self._reload_after_profile_switch()
         # Dashboard へ移動
         for i in range(self.tabs.count()):
@@ -5607,6 +5616,14 @@ class MainWindow(QMainWindow):
             self.set_session(sid)
         except Exception as e:
             LOG.warn(f"home session jump failed: {e}")
+
+    def _on_mode_changed(self, mode_key: str):
+        """モードコンボ変更時、即時に Dashboard レイアウトを更新 (始める押下を待たず)。"""
+        try:
+            self.dashboard._rebuild_hero_row()
+        except Exception as e:
+            LOG.warn(f"dashboard rebuild on mode change failed: {e}")
+        self.status.showMessage(f"モード: {MODES.current().label}", 3000)
 
     def _reload_after_profile_switch(self):
         """profile 切替後にキャッシュを捨てて UI を更新。"""

@@ -120,14 +120,16 @@ class HomeTab(QWidget):
     する。「始める」で start_clicked、行ダブルクリックで session_jump。
     """
 
-    start_clicked = pyqtSignal(str, str)  # (profile_id, discipline_key)
+    start_clicked = pyqtSignal(str, str, str)  # (profile_id, discipline_key, mode_key)
     session_jump = pyqtSignal(int)
+    mode_changed = pyqtSignal(str)  # mode_key
 
     def __init__(self, profiles_mgr, discipline_mod, settings, db_path: str,
-                 parent=None):
+                 modes_mod=None, parent=None):
         super().__init__(parent)
         self.profiles_mgr = profiles_mgr
         self.T = discipline_mod
+        self.M = modes_mod  # scatt_modes (省略可: 未提供なら mode UI を出さない)
         self.settings = settings
         self.db_path = db_path
         self._recent_rows: list[dict] = []
@@ -150,7 +152,7 @@ class HomeTab(QWidget):
         outer.addWidget(sub)
         outer.addSpacing(8)
 
-        # 射手 + 種目を 2 列で並べる
+        # 射手 + 種目 + モード を 3 列で並べる
         row = QHBoxLayout()
         row.setSpacing(24)
         # 射手
@@ -167,7 +169,7 @@ class HomeTab(QWidget):
         pbox.addWidget(new_btn)
         profile_col.addLayout(pbox)
         row.addLayout(profile_col, 1)
-        # 種目
+        # 射撃種目
         disc_col = QVBoxLayout()
         dlbl = QLabel("射撃種目")
         dlbl.setStyleSheet("font-weight: bold; font-size: 12px;")
@@ -180,6 +182,30 @@ class HomeTab(QWidget):
             self.disc_combo.setCurrentIndex(idx)
         disc_col.addWidget(self.disc_combo)
         row.addLayout(disc_col, 1)
+        # モード
+        if self.M is not None:
+            mode_col = QVBoxLayout()
+            mlbl = QLabel("モード")
+            mlbl.setStyleSheet("font-weight: bold; font-size: 12px;")
+            mode_col.addWidget(mlbl)
+            self.mode_combo = QComboBox()
+            for k, m in self.M.MODES.items():
+                self.mode_combo.addItem(m.label, k)
+            cur_mode = self.settings.get("mode") or "prone"
+            idx = self.mode_combo.findData(cur_mode)
+            if idx >= 0:
+                self.mode_combo.setCurrentIndex(idx)
+            self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+            mode_col.addWidget(self.mode_combo)
+            self.mode_desc = QLabel("")
+            self.mode_desc.setStyleSheet("color: #777; font-size: 11px;")
+            self.mode_desc.setWordWrap(True)
+            mode_col.addWidget(self.mode_desc)
+            row.addLayout(mode_col, 1)
+            self._update_mode_desc()
+        else:
+            self.mode_combo = None
+            self.mode_desc = None
         outer.addLayout(row)
 
         outer.addWidget(self._hline())
@@ -301,7 +327,6 @@ class HomeTab(QWidget):
         r = index.row()
         if 0 <= r < len(self._recent_rows):
             sid = self._recent_rows[r]["sid"]
-            # 「始める」相当の確定処理も同時に
             self._apply_selection()
             self.session_jump.emit(sid)
 
@@ -309,10 +334,35 @@ class HomeTab(QWidget):
         self._apply_selection()
         prof_id = self.profile_combo.currentData() or self.profiles_mgr.current_id()
         disc_key = self.disc_combo.currentData() or self.T.current_key()
-        self.start_clicked.emit(prof_id, disc_key)
+        mode_key = (self.mode_combo.currentData() if self.mode_combo
+                    else (self.settings.get("mode") or "prone"))
+        self.start_clicked.emit(prof_id, disc_key, mode_key)
+
+    def _on_mode_changed(self, _idx):
+        if self.M is None or self.mode_combo is None:
+            return
+        new_mode = self.mode_combo.currentData()
+        if not new_mode:
+            return
+        # モード切替: 推奨 discipline も自動で追従
+        m = self.M.MODES.get(new_mode)
+        if m:
+            i = self.disc_combo.findData(m.suggested_discipline)
+            if i >= 0:
+                self.disc_combo.setCurrentIndex(i)
+        self._update_mode_desc()
+        self.mode_changed.emit(new_mode)
+
+    def _update_mode_desc(self):
+        if self.M is None or self.mode_combo is None or self.mode_desc is None:
+            return
+        key = self.mode_combo.currentData()
+        m = self.M.MODES.get(key)
+        if m:
+            self.mode_desc.setText(m.description)
 
     def _apply_selection(self):
-        """profile と discipline の選択を実反映。"""
+        """profile / discipline / mode の選択を実反映。"""
         pid = self.profile_combo.currentData()
         if pid and pid != self.profiles_mgr.current_id():
             self.profiles_mgr.set_current(pid)
@@ -320,4 +370,9 @@ class HomeTab(QWidget):
         if dk and dk != self.T.current_key():
             self.settings.set("discipline", dk)
             self.T.set_current(dk)
+        if self.M is not None and self.mode_combo is not None:
+            mk = self.mode_combo.currentData()
+            if mk and mk != (self.settings.get("mode") or "prone"):
+                # mode 切替: settings に layout プリセットを書き込み
+                self.M.apply_to_settings(mk, self.settings)
         self.settings.set("home/seen", True)
