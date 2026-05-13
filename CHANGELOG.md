@@ -3,6 +3,47 @@
 すべての変更点は [Keep a Changelog](https://keepachangelog.com/) 形式に倣う。
 バージョニングは [Semantic Versioning](https://semver.org/) ベース。
 
+## [0.4.0] — 2026-05-13
+
+### 名称変更
+- **アプリ名を SCATT Prone Analyzer → SCATT Companion へ** (伏射限定でなくなった反映)
+- Bundle ID / パッケージ / パス系も `scatt-companion` に統一
+- About ダイアログに「開発: Kai Tabata + Claude Opus 4.7」を明記
+
+### Added (大きい)
+- **AR モード本実装** (`scatt_modes.py`): 3 モード構成 (Prone / AR / ホールド練習)
+  - ホーム画面でモード選択、SETTINGS に layout プリセットを一括書込
+  - AR: 撃発時速度 / S1 / 撃発時心拍 / フォロースルー安定 を KPI
+  - ホールド練習: ターゲット中心指標 (10a/R95等) を表から隠し、重心ベース指標のみ
+- **AR データから実証された相関グラフ 5 種**:
+  - S1 vs 着弾点距離 (r=+0.38)
+  - 重心 R95 vs 10a-0.5 (r=-0.37)
+  - S1 vs ホールド時間 / フォロースルー比 vs 10a / S1 推移
+- **新指標 4 種** (`scatt_analysis.py`):
+  - `centroid_r95_05` / `centroid_r95_full` (重心基準 R95)
+  - `followthrough_ratio` (発射前後 R95 比)
+  - `post_v_mean_05` (発射後 0.5s 平均速度)
+- **新グラフ 2 種**:
+  - 発射前後 軌跡 重ね (フォロースルー一貫性)
+  - ホールド軌跡 (重心中心、ターゲット非依存)
+- **shot list ミニターゲット**: 各行の右端に 16x16 ターゲット + 着弾点 (緑=10点圏 / 黄=9点 / 赤=外)
+- **shot list 絞り込みフィルタ**: 「10点圏のみ」「9点以上」「★」等
+- **2 shot 比較ダイアログ**: ⌘+クリック 2 発選択 → 右クリックメニューから比較
+- **Live 即時診断ラベル**: 撃発時速度 / 静止 / 10a-0.5 / R95 を信号色で大きく表示
+- **セッション総括カード**: Sessions タブ上部にベスト/ワースト shot + 一言コメント
+- **軌跡アニメーション再生**: TargetTab 右クリック → ▶ 再生 / 0.25x-4x 速度切替
+- **ダークモード**: 暗い射場用のテーマ、Settings から切替
+
+### Changed
+- **SCATT 互換 S1 を正しく実装**: 平均照準速度 (mm/s, 直前 1 秒) — 本家と完全一致
+- **S2 は非表示**: 本家計算式の完全特定ができていないため、誤情報を出さない方針
+- **射手名・種目を SCATT データから取得**: persons テーブル + distance/caliber から discipline 自動判定 (`10m AR (立射)` 等)
+- **decode_trace 旧フォーマット対応**: 8 バイト/サンプル (cant 無し、2017 年頃のデータ) も読める
+
+### Fixed
+- shot list を再表示するときに fire_x/fire_y も取得し、ミニターゲットに反映
+- `fetch_recent_sessions` の SQL バグ修正 (shots.session_id が存在しない問題)
+
 ## [Unreleased]
 
 ### Added

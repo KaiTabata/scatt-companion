@@ -60,7 +60,7 @@ import scatt_paths as PATHS
 import scatt_metric_docs as DOCS
 import scatt_modes as MODES
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 
 DEFAULT_DB = PATHS.DEFAULT_SCATT_STORAGE
