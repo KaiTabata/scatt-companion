@@ -463,6 +463,13 @@ def _metric_value(t: dict, key: str) -> float | None:
     summ = t["summary"]
     if key == "timing_v":
         return t.get("timing_v")
+    # SCATT 互換 S1 / S2 (平均照準速度 mm/s)
+    if key == "s1_mm_s":
+        return summ.get("s1_mm_s")
+    if key == "s2_mm_s":
+        return summ.get("s2_mm_s")
+    if key == "da_mm":
+        return t.get("da_mm")  # session 集計時に注入
     if key == "r95_05":
         return (summ.get("last_05s") or {}).get("r95")
     if key == "cant_at_fire_deg":
@@ -526,15 +533,19 @@ def _metric_value(t: dict, key: str) -> float | None:
 
 # 指標定義: (key, ラベル, 単位, "low_good"|"high_good"|"abs_low_good"|"info", 表示桁)
 METRICS = [
-    # ----- SCATT 互換 (本家と同じ略号のみ) -----
+    # ----- SCATT 互換 (本家と同じ略号・単位) -----
     ("ten_a_1s",         "10a",                          "%",    "high_good",    1),
     ("ten_a_05s",        "10a-0.5",                      "%",    "high_good",    1),
-    ("r95_1",            "S1",                           "mm",   "low_good",     2),
-    ("r95_05",           "S2",                           "mm",   "low_good",     2),
+    ("s1_mm_s",          "S1",                           "mm/s", "low_good",     1),
+    ("s2_mm_s",          "S2",                           "mm/s", "low_good",     1),
+    ("da_mm",            "DA",                           "mm",   "low_good",     2),
     # ----- 補助指標 -----
     ("ten_b_1s",         "10b",                          "%",    "high_good",    1),
     ("ten_b_05s",        "10b-0.5",                      "%",    "high_good",    1),
     ("nine_c_1s",        "9c",                           "%",    "high_good",    1),
+    # R95: 旧 "S1"/"S2" (照準ブレ円半径)。SCATT の S1/S2 とは別物だが、円の広さを見るのに有用
+    ("r95_1",            "R95 直前 1秒  (円の半径)",   "mm",   "low_good",     2),
+    ("r95_05",           "R95 直前 0.5秒  (円の半径)", "mm",   "low_good",     2),
     ("r95_2",            "R95 直前 2秒",                "mm",   "low_good",     2),
     ("r95_3",            "R95 直前 3秒",                "mm",   "low_good",     2),
     ("timing_v",         "撃発タイミング (発射時の動き)", "mm/s","low_good",     1),

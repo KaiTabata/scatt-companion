@@ -97,6 +97,28 @@ def velocity_stats(v: np.ndarray) -> dict:
     }
 
 
+def mean_velocity_last(t: TraceArrays, seconds: float) -> float:
+    """発射前 `seconds` 秒の平均速度 [mm/s]。
+
+    SCATT 本家互換指標:
+      - S1 = mean_velocity_last(t, 1.0)    (直前 1 秒の平均照準速度)
+      - S2 = mean_velocity_last(t, 0.25)   (直前 250 ms)
+    値が小さいほど良い (照準が止まっているほど低い)。
+    """
+    if t.trace_offset is None:
+        return 0.0
+    n_window = int(round(seconds * t.sample_rate))
+    start = max(0, t.trace_offset - n_window)
+    end = t.trace_offset
+    if end - start < 2:
+        return 0.0
+    seg = t.samples[start:end]
+    dx = np.diff(seg[:, 0])
+    dy = np.diff(seg[:, 1])
+    v = np.hypot(dx, dy) * t.sample_rate
+    return float(np.mean(v))
+
+
 # ----- 周波数解析 (FFT) -----
 
 def spectrum(signal: np.ndarray, sample_rate: float,
@@ -534,6 +556,9 @@ def summarize(t: TraceArrays) -> dict:
         "v_pre": velocity_stats(v_pre),
         "v_post": velocity_stats(v_post),
         "stability": stability_multi(t, (0.5, 1.0, 2.0, 3.0)),
+        # SCATT 本家互換 S1 / S2 (平均照準速度 mm/s、直前 1.0s / 0.25s)
+        "s1_mm_s":  mean_velocity_last(t, 1.0),
+        "s2_mm_s":  mean_velocity_last(t, 0.25),
         "last_05s": last_window_quality(t, 0.5),
         "last_10s": last_window_quality(t, 1.0),
         "phases": segment_phases(t),
