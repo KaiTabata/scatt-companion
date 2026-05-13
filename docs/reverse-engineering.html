@@ -8,16 +8,31 @@
 <link rel="icon" type="image/png" href="img/icon.png">
 <link rel="stylesheet" href="style.css">
 <style>
-  /* このページ用の追加スタイル */
+  /* このページ用の追加スタイル — 2 カラム (サイドバー TOC + 本文) */
+  .re-layout {
+    max-width: 1180px; margin: 0 auto; padding: 0 24px;
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 48px;
+    align-items: start;
+  }
   .toc {
-    position: sticky; top: 16px;
+    position: sticky; top: 24px;
     background: var(--bg-alt); border: 1px solid var(--border);
-    border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;
+    border-radius: 8px; padding: 16px 18px;
     font-size: 13px;
   }
-  .toc ol { margin: 0; padding-left: 18px; }
+  .toc-title { font-weight: 600; margin-bottom: 8px; color: var(--fg); }
+  .toc ol { margin: 0; padding-left: 18px; line-height: 1.9; }
   .toc a { color: var(--fg-muted); text-decoration: none; }
   .toc a:hover { color: var(--accent); }
+  .re-content > h2:first-child { margin-top: 0; }
+  /* アンカーリンクで飛んだとき、上に隙間 (固定ヘッダー無しでも余裕) */
+  .re-content h2, .re-content h3 { scroll-margin-top: 24px; }
+  @media (max-width: 900px) {
+    .re-layout { grid-template-columns: 1fr; gap: 24px; }
+    .toc { position: static; }
+  }
   .phase-box {
     background: var(--bg-alt); border: 1px solid var(--border);
     border-left: 4px solid var(--accent);
@@ -43,7 +58,6 @@
     background: #fff8e1; border: 1px solid #f0c952;
     border-radius: 6px; padding: 12px 16px; margin: 16px 0;
   }
-  .container.narrow { max-width: 920px; }
 </style>
 </head>
 <body>
@@ -69,23 +83,24 @@
 </header>
 
 <section class="section">
-  <div class="container narrow">
+  <div class="re-layout">
 
     <nav class="toc">
-      <b>目次</b>
+      <div class="toc-title">目次</div>
       <ol>
         <li><a href="#why">なぜリバースしたか</a></li>
-        <li><a href="#overview">ファイル構造の全体像</a></li>
-        <li><a href="#observation">最初の観察 (sqlite で見える範囲)</a></li>
+        <li><a href="#overview">ファイル構造</a></li>
+        <li><a href="#observation">最初の観察</a></li>
         <li><a href="#decoding">復号の 4 段階</a></li>
-        <li><a href="#xor-key">XOR 鍵の特定 — バイナリ静的解析</a></li>
-        <li><a href="#sample-format">サンプル形式 — QDataStream の中身</a></li>
-        <li><a href="#full-code">完全な Python 復号関数</a></li>
-        <li><a href="#verify">検証 — 本家との一致確認</a></li>
+        <li><a href="#xor-key">XOR 鍵の特定</a></li>
+        <li><a href="#sample-format">サンプル形式</a></li>
+        <li><a href="#full-code">完全な Python 実装</a></li>
+        <li><a href="#verify">検証</a></li>
         <li><a href="#legal">法的・倫理的観点</a></li>
       </ol>
     </nav>
 
+    <main class="re-content">
     <h2 id="why">1. なぜリバースしたか</h2>
     <p>
       SCATT Expert は、射手にとって有用な軌跡データを内部で計算しているにもかかわらず、
@@ -302,6 +317,7 @@ blob = conn.execute('SELECT data FROM traces LIMIT 1').fetchone()[0]
 "</code></pre>
     <p>または <code>make gui</code> で GUI から見るのが簡単。</p>
 
+    </main>
   </div>
 </section>
 
