@@ -6,7 +6,7 @@
   profiles[i] = {"id": "<slug>", "name": "表示名", "db": "<file path>"}
 
 DB ファイル配置:
-  ~/Library/Application Support/scatt-prone-analyzer/profiles/<id>/extra.db
+  ~/Library/Application Support/scatt-companion/profiles/<id>/extra.db
 
 互換性:
   既存ユーザの単一 extra.db (DEFAULT_EXTRA_DB) は "default" profile として

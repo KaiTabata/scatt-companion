@@ -88,21 +88,42 @@ def test_fetch_recent_with_synthetic_db(tmp_path):
     db = tmp_path / "fake.db"
     conn = sqlite3.connect(str(db))
     conn.executescript("""
+        CREATE TABLE persons (
+            person_id INTEGER PRIMARY KEY, name TEXT, name_uppercase TEXT
+        );
         CREATE TABLE sessions (
-            session_id INTEGER PRIMARY KEY, position INTEGER, distance INTEGER,
-            caliber INTEGER, sample_rate INTEGER
+            session_id INTEGER PRIMARY KEY, person_id INTEGER, position INTEGER,
+            distance REAL, caliber REAL, sample_rate INTEGER
         );
         CREATE TABLE traces (session_id INTEGER, timer INTEGER);
         CREATE TABLE shots (session_id INTEGER);
     """)
     now_ms = int(datetime.datetime.now().timestamp() * 1000)
-    conn.execute("INSERT INTO sessions VALUES (1, 0, 50, 22, 120)")
+    conn.execute("INSERT INTO persons VALUES (1, 'tester', 'TESTER')")
+    # 50m prone
+    conn.execute("INSERT INTO sessions VALUES (1, 1, 0, 50.0, 5.6, 120)")
     conn.execute("INSERT INTO traces VALUES (1, ?)", (now_ms,))
     conn.executemany("INSERT INTO shots VALUES (?)", [(1,)] * 10)
+    # 10m AR session
+    conn.execute("INSERT INTO sessions VALUES (2, 1, 0, 10.0, 4.5, 100)")
+    conn.execute("INSERT INTO traces VALUES (2, ?)", (now_ms - 1000,))
+    conn.executemany("INSERT INTO shots VALUES (?)", [(2,)] * 60)
     conn.commit()
     conn.close()
     rows = HOME.fetch_recent_sessions(str(db), limit=5)
-    assert len(rows) == 1
+    assert len(rows) == 2
+    # 最初の row は時間順 = sid 1 (50m prone)
     assert rows[0]["sid"] == 1
-    assert rows[0]["n_shots"] == 10
-    assert rows[0]["position"] == "prone"
+    assert rows[0]["shooter"] == "tester"
+    assert "伏射" in rows[0]["position"]
+    # 2 番目 = AR
+    assert rows[1]["sid"] == 2
+    assert "AR" in rows[1]["position"]
+
+
+def test_detect_discipline_label():
+    """distance/caliber → ラベル変換のテスト。"""
+    assert "AR" in HOME.detect_discipline_label(10.0, 4.5, 0)
+    assert "AP" in HOME.detect_discipline_label(10.0, 4.5 + 0.6, 0)  # > 5.0
+    assert "伏射" in HOME.detect_discipline_label(50.0, 5.6, 0)
+    assert "立射" in HOME.detect_discipline_label(50.0, 5.6, 1)

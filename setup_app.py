@@ -7,18 +7,18 @@
 または:
   make app
 
-生成物: dist/SCATT Prone Analyzer.app
+生成物: dist/SCATT Companion.app
 未署名なので初回起動時に macOS Gatekeeper の警告が出る:
   右クリック → 開く → 警告ダイアログで「開く」
 
 ad-hoc 署名済みにするなら、ビルド後:
-  codesign --force --deep --sign - "dist/SCATT Prone Analyzer.app"
+  codesign --force --deep --sign - "dist/SCATT Companion.app"
 """
 
 from setuptools import setup
 
 APP = ["scatt_gui.py"]
-APP_NAME = "SCATT Prone Analyzer"
+APP_NAME = "SCATT Companion"
 DATA_FILES = [
     "README.html",
     "LICENSE",
@@ -29,7 +29,7 @@ OPTIONS = {
     "plist": {
         "CFBundleName": APP_NAME,
         "CFBundleDisplayName": APP_NAME,
-        "CFBundleIdentifier": "com.scatt-prone.analyzer",
+        "CFBundleIdentifier": "com.scatt-companion.app",
         "CFBundleVersion": "0.3.0",
         "CFBundleShortVersionString": "0.3.0",
         "NSHumanReadableCopyright": "Apache License 2.0",

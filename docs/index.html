@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SCATT Prone Analyzer — SCATT Expert 補助分析ツール</title>
+<title>SCATT Companion — SCATT Expert 補助分析ツール</title>
 <meta name="description" content="SCATT Expert に並べて使う補助分析ツール。50m ライフル / 10m エアライフル・ピストル対応、本家にない手のふるえ・呼吸 FFT、反動詳細、心拍/HRV、自然言語フィードバック。">
-<meta property="og:title" content="SCATT Prone Analyzer">
+<meta property="og:title" content="SCATT Companion">
 <meta property="og:description" content="SCATT Expert に並べて使う伏射補助分析ツール">
 <meta property="og:image" content="img/icon.png">
 <link rel="icon" type="image/png" href="img/icon.png">
@@ -16,8 +16,8 @@
 <header class="hero">
   <nav class="nav">
     <div class="nav-logo">
-      <img src="img/icon.png" alt="SCATT Prone Analyzer">
-      <span>SCATT Prone Analyzer</span>
+      <img src="img/icon.png" alt="SCATT Companion">
+      <span>SCATT Companion</span>
     </div>
     <div class="nav-links">
       <a href="#features">機能</a>
@@ -29,20 +29,20 @@
   </nav>
   <div class="hero-inner">
     <img src="img/icon.png" alt="" class="hero-icon">
-    <h1>SCATT Expert に<br>並べて使う、伏射特化の分析ツール</h1>
+    <h1>SCATT Expert に<br>並べて使う、伏射 / 立射対応の分析ツール</h1>
     <p class="hero-sub">
       本家にない手のふるえ・呼吸 FFT、反動詳細、銃の傾き統計、心拍 / HRV、自然言語フィードバック。<br>
       50m ライフル / 10m エアライフル / 10m エアピストルに対応。ローカル動作・オフライン完結。
     </p>
     <div class="hero-cta">
-      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.3.0/scatt-prone-analyzer-0.3.0.dmg">DMG をダウンロード (v0.3.0)</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.3.0/scatt-companion-0.3.0.dmg">DMG をダウンロード (v0.3.0)</a>
       <a class="btn secondary" href="#install">インストール手順</a>
       <a class="btn secondary" href="https://github.com/KaiTabata/scatt-analyzer" target="_blank" rel="noopener">GitHub</a>
     </div>
     <p class="hero-note">SCATT Electronics 公式ではありません。Apache License 2.0。</p>
   </div>
   <div class="hero-shot">
-    <img src="img/dashboard.png" alt="SCATT Prone Analyzer — Dashboard">
+    <img src="img/dashboard.png" alt="SCATT Companion — Dashboard">
   </div>
 </header>
 
@@ -177,11 +177,11 @@
     <h2>インストール</h2>
     <h3>方法 A: DMG ダウンロード (推奨)</h3>
     <p>
-      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.3.0/scatt-prone-analyzer-0.3.0.dmg">scatt-prone-analyzer-0.3.0.dmg (約 150MB)</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.3.0/scatt-companion-0.3.0.dmg">scatt-companion-0.3.0.dmg (約 150MB)</a>
     </p>
     <ol>
       <li>DMG をダブルクリックで開く</li>
-      <li><code>SCATT Prone Analyzer.app</code> を <code>Applications</code> フォルダにドラッグ</li>
+      <li><code>SCATT Companion.app</code> を <code>Applications</code> フォルダにドラッグ</li>
       <li>初回起動は Applications フォルダで <strong>右クリック → 開く</strong>(Gatekeeper 警告に「開く」で進む)</li>
     </ol>
     <p>署名は ad-hoc(Apple Developer Program 未加入のため公証なし)。気になる場合は方法 B のソースビルドが選べます。</p>
@@ -220,7 +220,7 @@ make test      # pytest で単体テスト</code></pre>
       で 4 段階の復号手順 / XOR 鍵の抽出方法 / Python 実装の全文を公開している。
     </p>
     <p>本ソフトは <strong>storage.dat を読み取る</strong>のと、明示的な操作で <strong>異常 shot の削除</strong>(<code>DELETE FROM shots</code>)を行う。書き込み内容はそれ以外にない。</p>
-    <p>SCATT が保存しない補助データ(心拍 / HRV / 将来の IMU)は別 SQLite (<code>~/Library/Application Support/scatt-prone-analyzer/extra.db</code>)に保存する。</p>
+    <p>SCATT が保存しない補助データ(心拍 / HRV / 将来の IMU)は別 SQLite (<code>~/Library/Application Support/scatt-companion/extra.db</code>)に保存する。</p>
   </div>
 </section>
 
@@ -257,14 +257,14 @@ make test      # pytest で単体テスト</code></pre>
     </details>
     <details>
       <summary>データを別 Mac に持っていけますか?</summary>
-      <p>SCATT 本体のデータ (<code>storage.dat</code>) は SCATT がコピー対応。本ソフトの心拍記録 (<code>extra.db</code>) は <code>~/Library/Application Support/scatt-prone-analyzer/</code> をコピーすれば移行できます。</p>
+      <p>SCATT 本体のデータ (<code>storage.dat</code>) は SCATT がコピー対応。本ソフトの心拍記録 (<code>extra.db</code>) は <code>~/Library/Application Support/scatt-companion/</code> をコピーすれば移行できます。</p>
     </details>
   </div>
 </section>
 
 <footer class="footer">
   <div class="container">
-    <p>SCATT Prone Analyzer · Apache License 2.0 · <a href="https://github.com/KaiTabata/scatt-analyzer">GitHub</a></p>
+    <p>SCATT Companion · Apache License 2.0 · <a href="https://github.com/KaiTabata/scatt-analyzer">GitHub</a></p>
     <p class="small">SCATT, SCATT Expert は SCATT Electronics の商標です。本ソフトは同社の公式ではない非公式の補助ツールです。</p>
   </div>
 </footer>

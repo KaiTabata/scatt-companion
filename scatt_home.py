@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-POSITION_NAMES = {0: "prone", 1: "standing", 2: "kneeling", 3: "other"}
+POSITION_NAMES = {0: "伏射", 1: "立射", 2: "膝射", 3: "他"}
 
 
 def _ms_to_dt(ms: Optional[int]) -> Optional[datetime.datetime]:
@@ -36,8 +36,31 @@ def _ms_to_dt(ms: Optional[int]) -> Optional[datetime.datetime]:
         return None
 
 
+def detect_discipline_label(dist: float | None, cal: float | None,
+                              pos: int | None) -> str:
+    """SCATT の sessions row から「種目 + 姿勢」ラベルを生成。
+
+    SCATT は position を 0 のままにすることが多い (= 不正確) ので、
+    distance と caliber から discipline を推定する。
+      - dist ≤ 10.5 & cal ≤ 5.0 → 10m AR
+      - dist ≤ 10.5 & cal > 5.0 → 10m AP
+      - dist ≥ 25 → 50m/25m など, position 名を併記
+    """
+    if dist is None:
+        return "?"
+    if dist <= 10.5 and cal is not None:
+        if cal <= 5.0:
+            return "10m AR (立射)"
+        return "10m AP"
+    pos_name = POSITION_NAMES.get(pos, "?")
+    return f"{int(dist)}m {pos_name}"
+
+
 def fetch_recent_sessions(db_path: str, limit: int = 10) -> list[dict]:
-    """SCATT storage.dat から最近のセッションを集計。"""
+    """SCATT storage.dat から最近のセッションを集計。
+
+    persons テーブル JOIN で射手名、distance/caliber から discipline を推定。
+    """
     out: list[dict] = []
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2.0)
@@ -45,19 +68,23 @@ def fetch_recent_sessions(db_path: str, limit: int = 10) -> list[dict]:
         return out
     try:
         rows = conn.execute("""
-            SELECT s.session_id, s.position,
+            SELECT s.session_id, s.position, s.distance, s.caliber,
+                   p.name,
                    (SELECT MAX(timer) FROM traces WHERE session_id = s.session_id) AS last_t,
                    (SELECT COUNT(*) FROM shots WHERE session_id = s.session_id) AS n_shots
-            FROM sessions s ORDER BY last_t DESC NULLS LAST LIMIT ?
+            FROM sessions s
+            LEFT JOIN persons p ON p.person_id = s.person_id
+            ORDER BY last_t DESC NULLS LAST LIMIT ?
         """, (limit,)).fetchall()
     except sqlite3.Error:
         conn.close()
         return out
-    for sid, pos, last_t, n in rows:
+    for sid, pos, dist, cal, name, last_t, n in rows:
         out.append({
             "sid": sid,
             "dt": _ms_to_dt(last_t),
-            "position": POSITION_NAMES.get(pos, f"pos{pos}"),
+            "position": detect_discipline_label(dist, cal, pos),
+            "shooter": name or "—",
             "n_shots": n or 0,
         })
     conn.close()
@@ -143,7 +170,7 @@ class HomeTab(QWidget):
         outer.setSpacing(16)
 
         # タイトル
-        title = QLabel("SCATT Prone Analyzer")
+        title = QLabel("SCATT Companion")
         f = QFont(); f.setPointSize(22); f.setBold(True)
         title.setFont(f)
         outer.addWidget(title)
@@ -216,8 +243,8 @@ class HomeTab(QWidget):
         outer.addWidget(rec_lbl)
         self.recent_table = QTableWidget()
         self.recent_table.doubleClicked.connect(self._on_recent_double_clicked)
-        self.recent_table.setColumnCount(3)
-        self.recent_table.setHorizontalHeaderLabels(["日時", "姿勢", "shots"])
+        self.recent_table.setColumnCount(4)
+        self.recent_table.setHorizontalHeaderLabels(["日時", "射手", "種目/姿勢", "shots"])
         self.recent_table.verticalHeader().setVisible(False)
         self.recent_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.recent_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -285,13 +312,14 @@ class HomeTab(QWidget):
             it = QTableWidgetItem("(セッション履歴なし)")
             it.setForeground(Qt.GlobalColor.gray)
             self.recent_table.setItem(0, 0, it)
-            self.recent_table.setSpan(0, 0, 1, 3)
+            self.recent_table.setSpan(0, 0, 1, 4)
             return
         for r_i, r in enumerate(rows):
             dt_str = r["dt"].strftime("%Y-%m-%d %H:%M") if r["dt"] else "—"
             self.recent_table.setItem(r_i, 0, QTableWidgetItem(dt_str))
-            self.recent_table.setItem(r_i, 1, QTableWidgetItem(r["position"]))
-            self.recent_table.setItem(r_i, 2, QTableWidgetItem(str(r["n_shots"])))
+            self.recent_table.setItem(r_i, 1, QTableWidgetItem(r.get("shooter", "—")))
+            self.recent_table.setItem(r_i, 2, QTableWidgetItem(r["position"]))
+            self.recent_table.setItem(r_i, 3, QTableWidgetItem(str(r["n_shots"])))
 
     def _fill_digest(self):
         d = fetch_digest(self.db_path)

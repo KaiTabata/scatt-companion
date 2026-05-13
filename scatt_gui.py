@@ -144,7 +144,7 @@ class S:
     }
 
     def __init__(self):
-        self._q = QSettings("scatt-prone", "analyzer")
+        self._q = QSettings("scatt-companion", "analyzer")
 
     def get(self, key: str):
         default = self.DEFAULTS.get(key)
@@ -306,7 +306,23 @@ def delete_shots(db_path: str, shot_ids: list[int]) -> dict:
     return {"shots": len(shot_ids), "traces": deleted_traces}
 
 
-POSITION_NAMES = {0: "prone", 1: "standing", 2: "kneeling", 3: "other"}
+POSITION_NAMES = {0: "伏射", 1: "立射", 2: "膝射", 3: "他"}
+
+
+def detect_discipline_label(dist, cal, position):
+    """SCATT の sessions row から「種目 + 姿勢」ラベルを生成。
+
+    SCATT の position フィールドは set されないことが多いため、distance + caliber
+    から種目を推定する。 (10m AR / 10m AP / 50m + 姿勢名)
+    """
+    if dist is None:
+        return "?"
+    if dist <= 10.5 and cal is not None:
+        if cal <= 5.0:
+            return "10m AR (立射)"
+        return "10m AP"
+    pos_name = POSITION_NAMES.get(position, "?")
+    return f"{int(dist)}m {pos_name}"
 
 
 def fetch_session_meta(conn: sqlite3.Connection, session_id: int) -> dict:
@@ -4545,7 +4561,7 @@ HELP_HTML = """
   <li>Apple Watch + iPhone に <b>HeartCast</b> 等の BLE Heart Rate Profile ブロードキャスタを入れる(iPhone から放送が安定)</li>
   <li>Mac 側で「心拍 接続」ボタンを押す → 自動スキャンして接続</li>
   <li>接続中は ToolBar に <span class="key">心拍: 72  HRV: 36ms</span> が常時表示</li>
-  <li>shot 受信時の心拍 + HRV が <code>~/Library/Application Support/scatt-prone-analyzer/extra.db</code> に永続化される</li>
+  <li>shot 受信時の心拍 + HRV が <code>~/Library/Application Support/scatt-companion/extra.db</code> に永続化される</li>
 </ol>
 <p>胸ベルト (Polar H10 等) も同じインターフェースで動く。<code>make ble-scan</code> でデバイス確認可能。</p>
 
@@ -4691,20 +4707,21 @@ def show_about_dialog(parent=None):
     """About ダイアログを表示。"""
     from PyQt6.QtWidgets import QMessageBox
     msg = QMessageBox(parent)
-    msg.setWindowTitle("About — SCATT Prone Analyzer")
+    msg.setWindowTitle("About — SCATT Companion")
     msg.setIconPixmap(QApplication.instance().windowIcon().pixmap(64, 64))
     msg.setText(
-        f"<b>SCATT Prone Analyzer</b>  v{VERSION}<br>"
-        "伏射特化の SCATT Expert 補助分析ツール"
+        f"<b>SCATT Companion</b>  v{VERSION}<br>"
+        "伏射 / 立射対応の SCATT Expert 補助分析ツール"
     )
     msg.setInformativeText(
         f"<p>SCATT Electronics の <b>公式ソフトではありません</b>。"
         "SCATT が保存した自身の射撃データをローカルで読み取って解析する非公式ツールです。</p>"
+        f"<p><b>開発:</b> Kai Tabata + Claude Opus 4.7</p>"
         f"<p><b>Repository:</b> "
         f"<a href='https://github.com/KaiTabata/scatt-analyzer'>github.com/KaiTabata/scatt-analyzer</a><br>"
         f"<b>License:</b> Apache License 2.0<br>"
         f"<b>ログ:</b> {LOG.LOG_FILE}<br>"
-        f"<b>データ:</b> ~/Library/Application Support/scatt-prone-analyzer/extra.db</p>"
+        f"<b>データ:</b> ~/Library/Application Support/scatt-companion/extra.db</p>"
         "<p style='font-size:90%;color:#666'>SCATT, SCATT Expert は SCATT Electronics の商標です。"
         "本ソフトは公式ではない補助ツールであり、SCATT Electronics と関係ありません。</p>"
     )
@@ -5523,6 +5540,44 @@ class ShotListPanel(QListWidget):
         if tid is not None:
             self.on_select(tid)
 
+    def set_filter(self, filter_key: str):
+        """項目を絞り込む。filter_key:
+          "all": すべて表示
+          "ten":  10 点圏 (r ≤ R10) のみ
+          "nine_or_better": 9 点圏以上 (r ≤ R10*2)
+          "below_nine":  9 点圏外
+          "favorites":  ☆ 付きのみ
+        """
+        self._filter = filter_key
+        self._apply_filter()
+
+    def _apply_filter(self):
+        if not hasattr(self, "_filter") or self._filter == "all":
+            for i in range(self.count()):
+                self.setRowHidden(i, False)
+            return
+        r10 = T.current().ring_10_radius_mm
+        for i in range(self.count()):
+            item = self.item(i)
+            fx = item.data(Qt.ItemDataRole.UserRole + 1)
+            fy = item.data(Qt.ItemDataRole.UserRole + 2)
+            text = item.text()
+            keep = True
+            if fx is None or fy is None:
+                # fire 取れない shot は基本表示
+                keep = (self._filter not in ("ten", "nine_or_better", "below_nine"))
+            else:
+                r = (fx*fx + fy*fy) ** 0.5
+                if self._filter == "ten":
+                    keep = r <= r10
+                elif self._filter == "nine_or_better":
+                    keep = r <= r10 * 2
+                elif self._filter == "below_nine":
+                    keep = r > r10 * 2
+            if self._filter == "favorites":
+                keep = "★" in text
+            self.setRowHidden(i, not keep)
+
     def reload(self):
         """現セッション (self._session_id) の shot を session 内連番で表示。
 
@@ -5572,6 +5627,8 @@ class ShotListPanel(QListWidget):
             self.item(0).setData(Qt.ItemDataRole.UserRole + 1, fx)
             self.item(0).setData(Qt.ItemDataRole.UserRole + 2, fy)
         self._suppress = False
+        # 現在のフィルタを再適用
+        self._apply_filter()
 
     def set_session(self, session_id: int | None):
         """表示対象 session を切り替えて reload。"""
@@ -5784,7 +5841,7 @@ class MainWindow(QMainWindow):
         # メニューバー (macOS のメニュー)
         menubar = self.menuBar()
         app_menu = menubar.addMenu("&アプリ")
-        about_action = app_menu.addAction("About SCATT Prone Analyzer…")
+        about_action = app_menu.addAction("About SCATT Companion…")
         about_action.triggered.connect(lambda: show_about_dialog(self))
         about_action.setMenuRole(about_action.MenuRole.AboutRole)
         prefs_action = app_menu.addAction("設定…")
@@ -6590,9 +6647,9 @@ def main():
         _start_caffeinate()
 
     app = QApplication(sys.argv)
-    app.setApplicationName("SCATT Prone Analyzer")
+    app.setApplicationName("SCATT Companion")
     app.setApplicationVersion(VERSION)
-    app.setOrganizationName("scatt-prone")
+    app.setOrganizationName("scatt-companion")
     # 例外ハンドラは QApplication 作成後に install (QMessageBox が使えるよう)
     LOG.install_exception_handler()
     LOG.info(f"version={VERSION}  db={args.db}")

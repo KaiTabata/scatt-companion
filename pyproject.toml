@@ -3,14 +3,14 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "scatt-prone-analyzer"
+name = "scatt-companion"
 version = "0.3.0"
-description = "SCATT Expert 補助ツール — 伏射特化、本家にない指標と分析を提供"
+description = "SCATT Expert 補助ツール — 伏射 / 立射対応、本家にない指標と分析を提供"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 authors = [
-    { name = "SCATT Prone Analyzer contributors" },
+    { name = "Kai Tabata + Claude Opus 4.7" },
 ]
 keywords = ["scatt", "shooting", "prone", "rifle", "analyzer", "ble", "heart-rate"]
 classifiers = [

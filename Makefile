@@ -15,10 +15,10 @@ help:
 	@echo "  make concurrency-test   SCATT 起動中の並行読み出しを 60 秒間計測"
 	@echo "  make ble-scan           周囲の BLE 心拍デバイスを 10 秒スキャン"
 	@echo ""
-	@echo "  make app                .app バンドルをビルド (dist/SCATT Prone Analyzer.app)"
+	@echo "  make app                .app バンドルをビルド (dist/SCATT Companion.app)"
 	@echo "  make app-sign           ビルド後の .app に ad-hoc 署名"
 	@echo "  make install-local      .app を /Applications/ にインストール (上書き)"
-	@echo "  make dmg                .app を DMG にまとめる (dist/scatt-prone-analyzer-VER.dmg)"
+	@echo "  make dmg                .app を DMG にまとめる (dist/scatt-companion-VER.dmg)"
 	@echo "  make app-clean          build/ dist/ を削除"
 	@echo "  make check              環境チェック (Python・依存・DB の存在)"
 	@echo "  make install            依存パッケージ (PyQt6, numpy) をインストール"
@@ -64,31 +64,31 @@ app: app-clean icon
 	$(PYTHON) -m pip install --user py2app
 	$(PYTHON) setup_app.py py2app
 	@echo ""
-	@echo "Build complete: dist/SCATT Prone Analyzer.app"
+	@echo "Build complete: dist/SCATT Companion.app"
 	@echo "ad-hoc 署名する場合: make app-sign"
-	@echo "DMG にする場合: hdiutil create -volname 'SCATT Prone Analyzer' \\"
-	@echo "  -srcfolder 'dist/SCATT Prone Analyzer.app' -ov -format UDZO dist/scatt-prone-analyzer.dmg"
+	@echo "DMG にする場合: hdiutil create -volname 'SCATT Companion' \\"
+	@echo "  -srcfolder 'dist/SCATT Companion.app' -ov -format UDZO dist/scatt-companion.dmg"
 
 app-sign:
-	@codesign --force --deep --sign - "dist/SCATT Prone Analyzer.app"
+	@codesign --force --deep --sign - "dist/SCATT Companion.app"
 	@echo "ad-hoc signed."
 
 # 自分の Mac の /Applications/ に上書きインストール
 install-local: app app-sign
-	@test -d "dist/SCATT Prone Analyzer.app" || (echo "make app 失敗"; exit 1)
-	@if [ -d "/Applications/SCATT Prone Analyzer.app" ]; then \
+	@test -d "dist/SCATT Companion.app" || (echo "make app 失敗"; exit 1)
+	@if [ -d "/Applications/SCATT Companion.app" ]; then \
 	    echo "→ 既存版を削除"; \
-	    rm -rf "/Applications/SCATT Prone Analyzer.app"; \
+	    rm -rf "/Applications/SCATT Companion.app"; \
 	fi
 	@echo "→ /Applications/ にコピー"
-	@cp -R "dist/SCATT Prone Analyzer.app" "/Applications/"
-	@codesign --force --deep --sign - "/Applications/SCATT Prone Analyzer.app" 2>&1 | grep -v "failed strict validation" || true
-	@xattr -dr com.apple.quarantine "/Applications/SCATT Prone Analyzer.app" 2>/dev/null || true
+	@cp -R "dist/SCATT Companion.app" "/Applications/"
+	@codesign --force --deep --sign - "/Applications/SCATT Companion.app" 2>&1 | grep -v "failed strict validation" || true
+	@xattr -dr com.apple.quarantine "/Applications/SCATT Companion.app" 2>/dev/null || true
 	@/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-	    -f "/Applications/SCATT Prone Analyzer.app" 2>/dev/null || true
+	    -f "/Applications/SCATT Companion.app" 2>/dev/null || true
 	@echo ""
-	@echo "インストール完了: /Applications/SCATT Prone Analyzer.app"
-	@echo "起動: open '/Applications/SCATT Prone Analyzer.app'"
+	@echo "インストール完了: /Applications/SCATT Companion.app"
+	@echo "起動: open '/Applications/SCATT Companion.app'"
 
 app-clean:
 	rm -rf build dist
@@ -100,15 +100,15 @@ icon:
 # .app から DMG を生成 (ad-hoc 署名前提)
 VERSION := $(shell $(PYTHON) -c "import re; v=re.search(r'version *= *\"([^\"]+)\"', open('pyproject.toml').read()); print(v.group(1) if v else 'dev')")
 dmg:
-	@test -d "dist/SCATT Prone Analyzer.app" || (echo "先に make app を実行してください"; exit 1)
-	rm -f dist/scatt-prone-analyzer-*.dmg
-	hdiutil create -volname "SCATT Prone Analyzer" \
-		-srcfolder "dist/SCATT Prone Analyzer.app" \
+	@test -d "dist/SCATT Companion.app" || (echo "先に make app を実行してください"; exit 1)
+	rm -f dist/scatt-companion-*.dmg
+	hdiutil create -volname "SCATT Companion" \
+		-srcfolder "dist/SCATT Companion.app" \
 		-ov -format UDZO \
-		"dist/scatt-prone-analyzer-$(VERSION).dmg"
+		"dist/scatt-companion-$(VERSION).dmg"
 	@echo ""
-	@echo "DMG 完成: dist/scatt-prone-analyzer-$(VERSION).dmg"
-	@ls -la "dist/scatt-prone-analyzer-$(VERSION).dmg"
+	@echo "DMG 完成: dist/scatt-companion-$(VERSION).dmg"
+	@ls -la "dist/scatt-companion-$(VERSION).dmg"
 
 test:
 	@$(PYTHON) -m pip install --user --quiet pytest

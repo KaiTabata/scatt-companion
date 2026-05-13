@@ -27,7 +27,7 @@
 - **複数射手 (Profile) 対応** (`scatt_profile.py`): 心拍/HRV/除外フラグを射手別に保存
   - ToolBar の射手コンボから切替・新規追加・改名・削除
   - 既定 (default) profile は既存 `extra.db` をそのまま継続利用
-  - 新規 profile は `~/Library/Application Support/scatt-prone-analyzer/profiles/{id}/extra.db` に独立保存
+  - 新規 profile は `~/Library/Application Support/scatt-companion/profiles/{id}/extra.db` に独立保存
 - **バックアップ / インポート機能** (`scatt_backup.py`): 補助 DB (心拍・除外フラグ) と設定を zip で書き出し / 復元
   - Settings タブから操作、manifest 付き (バージョン / 作成日時 / ホスト) で zip 化
 - **更新通知** (`scatt_update.py`): 公開 JSON manifest を取りに行く軽量チェッカー

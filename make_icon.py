@@ -1,5 +1,5 @@
 #!/opt/homebrew/bin/python3.10
-"""SCATT Prone Analyzer のアプリアイコンを生成する。
+"""SCATT Companion のアプリアイコンを生成する。
 
 ISSF 50m ライフルターゲットをモチーフに、中央に弾着グループを配置。
 PyQt6 の QPainter で 1024×1024 PNG を描画 → macOS の sips/iconutil で

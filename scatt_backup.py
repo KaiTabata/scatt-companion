@@ -1,8 +1,8 @@
 """補助データのバックアップとインポート。
 
 backup_archive(path):
-  - extra.db (~/Library/Application Support/scatt-prone-analyzer/extra.db)
-  - QSettings の plist (~/Library/Preferences/com.scatt-prone.analyzer.plist)
+  - extra.db (~/Library/Application Support/scatt-companion/extra.db)
+  - QSettings の plist (~/Library/Preferences/com.scatt-companion.app.plist)
   を 1 つの zip にまとめる
 
 restore_archive(path):

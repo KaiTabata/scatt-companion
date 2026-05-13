@@ -28,14 +28,14 @@ def is_windows() -> bool:
 def app_support_dir() -> Path:
     """本アプリの永続データ置き場 (extra.db / profiles/ など)。"""
     if is_macos():
-        return Path.home() / "Library/Application Support/scatt-prone-analyzer"
+        return Path.home() / "Library/Application Support/scatt-companion"
     if is_windows():
         # %APPDATA% = C:\Users\<user>\AppData\Roaming
         base = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
-        return Path(base) / "scatt-prone-analyzer"
+        return Path(base) / "scatt-companion"
     # Linux / その他 — XDG_DATA_HOME に倣う
     base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local/share")
-    return Path(base) / "scatt-prone-analyzer"
+    return Path(base) / "scatt-companion"
 
 
 def logs_dir() -> Path:
@@ -52,16 +52,16 @@ def settings_files_for_backup() -> list[Path]:
     """QSettings の保存先候補 (バックアップ対象)。OS で形式が違う。"""
     if is_macos():
         return [
-            Path.home() / "Library/Preferences/com.scatt-prone.analyzer.plist",
-            Path.home() / "Library/Preferences/com.scatt-prone.analyzer.SCATT-Prone-Analyzer.plist",
+            Path.home() / "Library/Preferences/com.scatt-companion.app.plist",
+            Path.home() / "Library/Preferences/com.scatt-companion.app.SCATT-Prone-Analyzer.plist",
         ]
     if is_windows():
-        # Windows では QSettings はレジストリ (HKCU\Software\scatt-prone\analyzer) に書く
+        # Windows では QSettings はレジストリ (HKCU\Software\scatt-companion\analyzer) に書く
         # ので物理ファイルではバックアップできない。空リストを返す
         return []
     return [
-        # Linux: QSettings は ~/.config/scatt-prone/analyzer.conf
-        Path.home() / ".config/scatt-prone/analyzer.conf",
+        # Linux: QSettings は ~/.config/scatt-companion/analyzer.conf
+        Path.home() / ".config/scatt-companion/analyzer.conf",
     ]
 
 

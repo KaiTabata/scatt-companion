@@ -45,7 +45,7 @@ def check_for_update(current_version: str,
     try:
         req = urllib.request.Request(
             manifest_url,
-            headers={"User-Agent": f"scatt-prone-analyzer/{current_version}"},
+            headers={"User-Agent": f"scatt-companion/{current_version}"},
         )
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             data = json.loads(resp.read().decode("utf-8"))

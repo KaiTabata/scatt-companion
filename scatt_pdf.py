@@ -155,7 +155,7 @@ def _build_pdf_html(session_meta: dict, shots: list[dict],
 {fb_html}
 
 <p style='margin-top:30px; font-size:8pt; color:#888;'>
-SCATT Prone Analyzer  ·  非公式の補助分析ツール  ·  Apache 2.0
+SCATT Companion  ·  非公式の補助分析ツール  ·  Apache 2.0
 </p>
 
 </body>

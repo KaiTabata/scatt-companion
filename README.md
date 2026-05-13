@@ -1,4 +1,4 @@
-# SCATT Prone Analyzer
+# SCATT Companion
 
 SCATT Expert の補助分析ツール。伏射(prone)に特化、本家 SCATT が出さない補助指標を提供する。
 
