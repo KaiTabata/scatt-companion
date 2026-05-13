@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCATT Expert データ — リバースエンジニアリング解説</title>
+<meta name="description" content="SCATT Expert の storage.dat (trace.data BLOB) を独自リバースで復号した手順の解説。XOR 鍵抽出、qCompress、QDataStream パース。">
+<link rel="icon" type="image/png" href="img/icon.png">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* このページ用の追加スタイル */
+  .toc {
+    position: sticky; top: 16px;
+    background: var(--bg-alt); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;
+    font-size: 13px;
+  }
+  .toc ol { margin: 0; padding-left: 18px; }
+  .toc a { color: var(--fg-muted); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+  .phase-box {
+    background: var(--bg-alt); border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    padding: 14px 18px; margin: 12px 0; border-radius: 6px;
+  }
+  .phase-box h4 { margin: 0 0 6px; font-size: 14px; color: var(--fg); }
+  .phase-box p { margin: 4px 0; }
+  .byte-diagram {
+    font-family: 'SF Mono', Menlo, monospace; font-size: 12px;
+    background: var(--code-bg); border: 1px solid var(--border);
+    padding: 12px; overflow-x: auto; margin: 12px 0;
+    border-radius: 6px; line-height: 1.7;
+  }
+  .byte-diagram .label { color: var(--accent); font-weight: 600; }
+  .byte-diagram .hex { color: #555; }
+  .step-num {
+    display: inline-block; background: var(--accent); color: white;
+    border-radius: 999px; width: 22px; height: 22px;
+    text-align: center; font-size: 12px; line-height: 22px;
+    margin-right: 6px; font-weight: 600;
+  }
+  .warning {
+    background: #fff8e1; border: 1px solid #f0c952;
+    border-radius: 6px; padding: 12px 16px; margin: 16px 0;
+  }
+  .container.narrow { max-width: 920px; }
+</style>
+</head>
+<body>
+
+<header class="hero" style="padding-bottom: 40px;">
+  <nav class="nav">
+    <div class="nav-logo">
+      <img src="img/icon.png" alt="SCATT Prone Analyzer">
+      <span>SCATT Prone Analyzer</span>
+    </div>
+    <div class="nav-links">
+      <a href="index.html">トップ</a>
+      <a href="https://github.com/KaiTabata/scatt-analyzer" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </nav>
+  <div class="hero-inner" style="padding-top: 36px;">
+    <h1 style="font-size: 32px;">SCATT Expert データの<br>リバースエンジニアリング解説</h1>
+    <p class="hero-sub">
+      なぜ自前で復号する必要があったか、そして<br>
+      暗号化された <code>trace.data</code> BLOB を 4 段階でほどいた手順。
+    </p>
+  </div>
+</header>
+
+<section class="section">
+  <div class="container narrow">
+
+    <nav class="toc">
+      <b>目次</b>
+      <ol>
+        <li><a href="#why">なぜリバースしたか</a></li>
+        <li><a href="#overview">ファイル構造の全体像</a></li>
+        <li><a href="#observation">最初の観察 (sqlite で見える範囲)</a></li>
+        <li><a href="#decoding">復号の 4 段階</a></li>
+        <li><a href="#xor-key">XOR 鍵の特定 — バイナリ静的解析</a></li>
+        <li><a href="#sample-format">サンプル形式 — QDataStream の中身</a></li>
+        <li><a href="#full-code">完全な Python 復号関数</a></li>
+        <li><a href="#verify">検証 — 本家との一致確認</a></li>
+        <li><a href="#legal">法的・倫理的観点</a></li>
+      </ol>
+    </nav>
+
+    <h2 id="why">1. なぜリバースしたか</h2>
+    <p>
+      SCATT Expert は、射手にとって有用な軌跡データを内部で計算しているにもかかわらず、
+      <strong>その生データを外部に出す API も公式エクスポートも提供していない</strong>。
+      アプリ内で見える指標は限られており、独自の解析(力みの周波数、反動の方向、
+      心拍と安定度の相関 等)を行うには生サンプル列が必要だった。
+    </p>
+    <p>
+      <code>~/Library/Application Support/SCATT Electronics/Scatt Expert/storage.dat</code>
+      は SQLite データベース で、これを read-only モードで開けば session/shot のメタデータは
+      取れる。しかし軌跡(120Hz のサンプル列)は <code>traces.data</code> カラムに
+      <strong>暗号化済み BLOB</strong> として格納されており、そのままでは読めない。
+    </p>
+    <p>本ソフトは、この BLOB を独自リバースで完全復号して使っている。</p>
+
+    <h2 id="overview">2. ファイル構造の全体像</h2>
+    <p><code>storage.dat</code> は標準的な SQLite 3 ファイル。<code>file</code> コマンドで確認できる:</p>
+    <pre><code>$ file ~/Library/Application\ Support/SCATT\ Electronics/Scatt\ Expert/storage.dat
+storage.dat: SQLite 3.x database, last written using SQLite version 3038003</code></pre>
+    <p>主なテーブル:</p>
+    <ul>
+      <li><code>sessions</code> — 練習セッション (id, position, distance, caliber, sample_rate)</li>
+      <li><code>traces</code> — 1 trace = 1 shot 相当 (id, session_id, timer, <strong>data BLOB</strong>)</li>
+      <li><code>shots</code> — 撃発イベント (trace_id への参照、trace 内オフセット、phase 等)</li>
+    </ul>
+    <p>
+      <code>traces.data</code> 以外は素直に読める。問題は data カラムの中身が
+      <em>明らかに圧縮 + 暗号化されたバイナリ</em> である点。
+    </p>
+
+    <h2 id="observation">3. 最初の観察 (sqlite で見える範囲)</h2>
+    <p>BLOB の最初の数バイトを抜き出して観察すると、こんな見た目:</p>
+    <div class="byte-diagram">
+<span class="label">offset 0:</span>  <span class="hex">01</span>                      ← 1 byte バージョン (常に 0x01)<br>
+<span class="label">offset 1:</span>  <span class="hex">e3 8a 47 7c f8 c9 ...</span> ← ランダムに見えるバイト列が続く
+    </div>
+    <p>
+      頭の <code>0x01</code> はバージョン番号らしい。続くデータはエントロピーが高く、
+      ランダムにしか見えない。<strong>圧縮</strong> 後 <strong>暗号化</strong> されているのか、
+      あるいは <strong>暗号化</strong> 後 <strong>圧縮</strong> されているのか — 通常、
+      圧縮後に暗号化するので圧縮済みデータはエントロピーが高い。
+    </p>
+    <p>
+      ここで重要な仮説: <strong>暗号化が単純な XOR で、その上に qCompress (zlib) が乗っている</strong>
+      可能性が高い。SCATT Expert は Qt で書かれていることが strings コマンドの結果から判明
+      しており、Qt の <code>qCompress</code> は zlib+4 バイト長前置の独自フォーマット。
+    </p>
+
+    <h2 id="decoding">4. 復号の 4 段階</h2>
+    <p>結論から書くと、<code>traces.data</code> は次の 4 段階で復号できる:</p>
+
+    <div class="phase-box">
+      <h4><span class="step-num">A</span>バージョンバイトの確認</h4>
+      <p>先頭 1 バイトが <code>0x01</code> であることを確認 → 残りが本体。</p>
+    </div>
+
+    <div class="phase-box">
+      <h4><span class="step-num">B</span>XOR 復号 (CBC 風 chain)</h4>
+      <p>16 バイト固定 XOR 鍵を使って <strong>1 バイトずつ</strong> 復号。各バイトは
+        さらに <strong>1 つ前の暗号文バイト</strong> とも XOR される (CBC モード風)。</p>
+      <pre><code>for i, c in enumerate(body):
+    out[i] = prev ^ c ^ XOR_KEY[i % 16]
+    prev = c   # ← 1 つ前の "暗号文" バイトを次に渡す</code></pre>
+      <p>これにより、同じデータでも先頭が違えば後ろも変わる (パターンを隠す)。</p>
+    </div>
+
+    <div class="phase-box">
+      <h4><span class="step-num">C</span>qCompress 形式のアンラップ</h4>
+      <p>復号後の最初の 1 バイト + 2 バイト (qChecksum) を捨て、残り 4 バイトを zlib 用の長さヘッダとして
+        スキップし、<code>zlib.decompress()</code> にかける。</p>
+      <pre><code>raw = zlib.decompress(decoded[1:][2:][4:])</code></pre>
+      <p>
+        Qt の qCompress フォーマットは <em>4-byte BE 長さ + zlib stream</em> という独自仕様。
+        Python 標準の zlib に渡すには長さフィールドを剥がす必要がある。
+      </p>
+    </div>
+
+    <div class="phase-box">
+      <h4><span class="step-num">D</span>マジックバイト + サンプル列パース</h4>
+      <p>展開後の先頭 4 バイトが <code>0x0a 0x0b 0x0c 0x0d</code> ならば成功。
+        その後、<code>offset 12-14</code> に <strong>2 バイト BE のサンプル数</strong>、
+        <code>offset 15</code> 以降に 12 バイト × N の連続サンプル。</p>
+      <pre><code>magic = raw[:4]            # b"\x0a\x0b\x0c\x0d"
+n = struct.unpack(">H", raw[12:14])[0]
+samples = [struct.unpack(">fff", raw[15 + i*12 : 15 + (i+1)*12])
+           for i in range(n)]</code></pre>
+    </div>
+
+    <h2 id="xor-key">5. XOR 鍵の特定 — バイナリ静的解析</h2>
+    <p>
+      鍵は <code>SCATT Expert</code> 本体の Mach-O バイナリの <code>__const</code> セクションに
+      平文で埋め込まれていた。Hopper / Ghidra で逆アセンブルし、<code>storage</code> 文字列の
+      周辺関数を辿ると XOR ループが見つかり、ループで参照されている定数アドレスを追って
+      <strong>0x1000d6f50 番地</strong> に到達。
+    </p>
+    <p>そこに 16 バイト連続で並んでいたのが鍵:</p>
+    <pre><code>XOR_KEY = bytes([
+    0xe3, 0x00, 0xe9, 0x00, 0x34, 0x85, 0x1d, 0x04,
+    0xf0, 0x95, 0xc0, 0x70, 0x0e, 0x1e, 0xb9, 0xf3,
+])</code></pre>
+    <p>
+      これは本ソフト独自の改変や鍵生成ではなく、SCATT Expert が自身のデータを保存するときに
+      使っている鍵そのもの。<strong>つまりこれを既知のフォーマット仕様として扱う</strong>
+      ことに等しい (DRM の迂回ではない)。
+    </p>
+
+    <h2 id="sample-format">6. サンプル形式 — QDataStream の中身</h2>
+    <p>1 サンプル = 12 バイト、全フィールド <strong>big-endian</strong>:</p>
+    <div class="byte-diagram">
+<span class="label">+0:</span>  <span class="hex">XX XX XX XX</span>   X 座標 (mm) — float32 BE<br>
+<span class="label">+4:</span>  <span class="hex">YY YY YY YY</span>   Y 座標 (mm) — float32 BE<br>
+<span class="label">+8:</span>  <span class="hex">CC CC CC CC</span>   Cant 角 (radians) — float32 BE<br>
+    </div>
+    <p>
+      X / Y は <strong>SCATT の画面座標系</strong>(Y は下方向が正)。Cant は銃身ロール角で、
+      水平が 0、右に傾けると正。サンプリングレートは <code>sessions.sample_rate</code> から取得
+      (典型 120 Hz)。
+    </p>
+    <p>
+      shot との対応は <code>shots.trace_offset</code> カラム — これは trace 内 N 番目のサンプルが
+      撃発の瞬間に対応する。本ソフトでは <code>samples[:trace_offset]</code> を <em>pre-trigger</em>、
+      <code>samples[trace_offset:]</code> を <em>post-trigger</em> (反動) として解析する。
+    </p>
+
+    <h2 id="full-code">7. 完全な Python 復号関数</h2>
+    <p>上記すべてを束ねた実装:</p>
+    <pre><code>import struct, zlib
+
+XOR_KEY = bytes([
+    0xe3, 0x00, 0xe9, 0x00, 0x34, 0x85, 0x1d, 0x04,
+    0xf0, 0x95, 0xc0, 0x70, 0x0e, 0x1e, 0xb9, 0xf3,
+])
+
+def decode_trace(blob: bytes):
+    if not blob or blob[0] != 0x01:
+        raise ValueError("bad version byte")
+    body = blob[1:]
+    # ----- Phase B: XOR 復号 (CBC 風 chain) -----
+    out = bytearray(len(body))
+    prev = 0
+    for i, c in enumerate(body):
+        out[i] = prev ^ c ^ XOR_KEY[i % 16]
+        prev = c
+    # ----- Phase C: qCompress (1B drop + 2B qChecksum + 4B BE length + zlib) -----
+    raw = zlib.decompress(bytes(out[1:])[2:][4:])
+    # ----- Phase D: マジック + サンプル列 -----
+    if raw[:4] != b"\x0a\x0b\x0c\x0d":
+        raise ValueError("bad magic")
+    n = struct.unpack(">H", raw[12:14])[0]
+    return [
+        struct.unpack(">fff", raw[15 + i * 12:15 + (i + 1) * 12])
+        for i in range(n)
+    ]</code></pre>
+    <p>
+      これがリポジトリ <a href="https://github.com/KaiTabata/scatt-analyzer/blob/main/scatt_gui.py"><code>scatt_gui.py</code></a>
+      の <code>decode_trace()</code> として実装されている関数の全文(コメントを追加した版)。
+      14 行ほどでフォーマット全体を再現できる。
+    </p>
+
+    <h2 id="verify">8. 検証 — 本家との一致確認</h2>
+    <p>正しく復号できているか検証するため、次のような確認をした:</p>
+    <ol>
+      <li><strong>サンプル数の一致</strong>: <code>n</code> × 12 + 15 = 展開後の長さに一致するかチェック</li>
+      <li><strong>shots.trace_offset</strong> の位置を取り出して X/Y を表示 → SCATT の表示する着弾点と
+        画面上で一致 (mm 精度)</li>
+      <li><strong>軌跡を本家 SCATT の表示と並べる</strong> → 完全に同じ軌跡を再現</li>
+      <li><strong>Cant 角</strong>: 銃を意図的に傾けて撃った trace で、復号した Cant が
+        ±5° 程度の差で本家の表示と一致</li>
+    </ol>
+    <p>これにより、復号は <strong>意図したサンプル列を 100% 再現している</strong>と判断できた。</p>
+
+    <h2 id="legal">9. 法的・倫理的観点</h2>
+    <div class="warning">
+      <p style="margin: 0;">
+        <strong>このソフトは SCATT Electronics の公式ソフトではない</strong>。SCATT は本作の開発・
+        運用に一切関与していない。"SCATT" と "SCATT Expert" は SCATT Electronics の商標。
+      </p>
+    </div>
+    <p>本作の立ち位置:</p>
+    <ul>
+      <li><strong>自分の射撃データを自分で解析するため</strong>のリバース。本ソフトは
+        ユーザ自身が SCATT Expert を購入・使用して作成したデータを、ユーザ自身が読み解く
+        補助をするだけ</li>
+      <li>本ソフトは <strong>SCATT Expert を再配布したり改変したり置き換えたりしない</strong>。
+        SCATT 本体は通常通りインストールが必要</li>
+      <li>復号鍵は <strong>SCATT Expert バイナリ自体に平文で埋め込まれていた</strong>ものを
+        参照しているにすぎない (秘匿された秘密鍵ではない)</li>
+      <li>本ソフトは <strong>Apache License 2.0</strong> で公開。ソースが完全に公開されているため、
+        悪用や隠れた挙動の余地はない</li>
+      <li>SCATT 側のデータベースへの書き込みは、ユーザが明示的に「異常 shot 削除」を実行した
+        ときに限り、<code>shots</code> 行の <code>deleted=1</code> フラグ更新のみ</li>
+    </ul>
+    <p>
+      日本国内法では「相互運用性 (interoperability) を目的とする逆コンパイル」については
+      著作権法 30 条の 4 (情報解析に必要な軽微な利用)、および
+      <a href="https://www.bunka.go.jp/seisaku/chosakuken/" target="_blank" rel="noopener">技術的保護手段の迂回禁止</a>
+      の例外規定で判断されることになる。本作は商業競合品ではなく、補助ツールという立場である。
+    </p>
+
+    <h2>付録: 試したい人へ</h2>
+    <p>もし手元の SCATT Expert データで試したい場合 (macOS):</p>
+    <pre><code>git clone https://github.com/KaiTabata/scatt-analyzer.git
+cd scatt-analyzer
+make install   # PyQt6, numpy, pyqtgraph, bleak
+python3 -c "
+import sqlite3, struct, zlib
+
+XOR_KEY = bytes([0xe3,0x00,0xe9,0x00,0x34,0x85,0x1d,0x04,
+                 0xf0,0x95,0xc0,0x70,0x0e,0x1e,0xb9,0xf3])
+
+conn = sqlite3.connect('file:' + '$HOME/Library/Application Support/SCATT Electronics/Scatt Expert/storage.dat' + '?mode=ro', uri=True)
+blob = conn.execute('SELECT data FROM traces LIMIT 1').fetchone()[0]
+# ... decode_trace(blob) を実行
+"</code></pre>
+    <p>または <code>make gui</code> で GUI から見るのが簡単。</p>
+
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="container">
+    <p>SCATT Prone Analyzer · Apache License 2.0 · <a href="https://github.com/KaiTabata/scatt-analyzer">GitHub</a></p>
+    <p class="small">SCATT, SCATT Expert は SCATT Electronics の商標です。本ソフトは同社の公式ではない非公式の補助ツールです。</p>
+  </div>
+</footer>
+
+</body>
+</html>

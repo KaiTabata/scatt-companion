@@ -215,6 +215,10 @@ make test      # pytest で単体テスト</code></pre>
       <li>結果は QDataStream 形式、各サンプル 12B = (X float32 BE, Y float32 BE, Cant float32 BE)</li>
       <li>サンプリングレートは <code>sessions.sample_rate</code>(典型 120Hz)</li>
     </ol>
+    <p>
+      → <a href="reverse-engineering.html"><strong>詳細な解説ページ</strong></a>
+      で 4 段階の復号手順 / XOR 鍵の抽出方法 / Python 実装の全文を公開している。
+    </p>
     <p>本ソフトは <strong>storage.dat を読み取る</strong>のと、明示的な操作で <strong>異常 shot の削除</strong>(<code>DELETE FROM shots</code>)を行う。書き込み内容はそれ以外にない。</p>
     <p>SCATT が保存しない補助データ(心拍 / HRV / 将来の IMU)は別 SQLite (<code>~/Library/Application Support/scatt-prone-analyzer/extra.db</code>)に保存する。</p>
   </div>
