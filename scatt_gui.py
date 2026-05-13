@@ -37,9 +37,9 @@ from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QFrame,
     QGraphicsPathItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox, QPushButton,
-    QScrollArea, QSpinBox, QSplitter, QStatusBar, QTableWidget,
-    QTableWidgetItem, QTabWidget, QTextBrowser, QToolBar, QVBoxLayout,
-    QGridLayout, QWidget,
+    QScrollArea, QSpinBox, QSplitter, QStatusBar, QStyledItemDelegate,
+    QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QToolBar,
+    QVBoxLayout, QGridLayout, QWidget,
 )
 
 # 自作分析モジュール
@@ -5232,9 +5232,69 @@ class TargetTab(QGraphicsView):
 # Shot List (左ペイン) — shot 単位の一覧、クリックで該当 trace を表示
 # ===========================================================================
 
+class ShotMiniTargetDelegate(QStyledItemDelegate):
+    """shot list の右端にミニターゲット (16x16) と着弾点を描画する delegate。"""
+
+    SIZE = 16   # ミニターゲット直径 (px)
+    PAD = 4     # 右端からの余白
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        fx = index.data(Qt.ItemDataRole.UserRole + 1)
+        fy = index.data(Qt.ItemDataRole.UserRole + 2)
+        if fx is None or fy is None:
+            return
+        rect = option.rect
+        tx = rect.right() - self.SIZE - self.PAD
+        ty = rect.center().y() - self.SIZE // 2
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # 黒地ターゲット
+        painter.setPen(QPen(QColor(50, 50, 50), 0.5))
+        painter.setBrush(QBrush(C.TARGET_BLACK))
+        painter.drawEllipse(tx, ty, self.SIZE, self.SIZE)
+        # 10 リング ガイド (薄い白丸)
+        outer = T.current().outer_diam_mm
+        ring10 = (T.current().ring_10_radius_mm * 2) / outer * self.SIZE
+        if ring10 > 1.5:
+            painter.setPen(QPen(QColor(255, 255, 255, 90), 0.4))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(int(tx + self.SIZE/2 - ring10/2),
+                                int(ty + self.SIZE/2 - ring10/2),
+                                int(ring10), int(ring10))
+        # 着弾点を outer 直径で正規化して描画
+        norm = self.SIZE / outer
+        cx = tx + self.SIZE / 2 + fx * norm
+        cy = ty + self.SIZE / 2 + fy * norm  # SCATT y 下方向
+        # クリップ (極端な外れは丸の縁に)
+        max_r = self.SIZE / 2 * 0.95
+        dx = cx - (tx + self.SIZE/2); dy = cy - (ty + self.SIZE/2)
+        r = (dx*dx + dy*dy) ** 0.5
+        if r > max_r:
+            k = max_r / r
+            cx = (tx + self.SIZE/2) + dx * k
+            cy = (ty + self.SIZE/2) + dy * k
+        # 中心からの距離でランク色
+        r_mm = (fx * fx + fy * fy) ** 0.5
+        r10 = T.current().ring_10_radius_mm
+        if r_mm <= r10:
+            col = QColor(56, 196, 89)        # 緑 = 10 点圏
+        elif r_mm <= r10 * 2:
+            col = QColor(220, 170, 50)       # 黄 = 9 点付近
+        else:
+            col = QColor(220, 70, 70)        # 赤 = 外
+        painter.setBrush(QBrush(col))
+        painter.setPen(QPen(QColor(255, 255, 255), 0.6))
+        d = 3.0
+        painter.drawEllipse(int(cx - d/2), int(cy - d/2), int(d), int(d))
+        painter.restore()
+
+
 class ShotListPanel(QListWidget):
     """左ペイン: 現セッション内の shot を表示。番号は session 内連番。
     マウスクリック / 矢印キー (↑↓) 両方で on_select(trace_id) が呼ばれる。
+
+    各行の右端にミニターゲット + 着弾点 (色: 緑=10点圏 / 黄=9点 / 赤=外)。
     """
 
     def __init__(self, db_path: str):
@@ -5252,6 +5312,8 @@ class ShotListPanel(QListWidget):
             f"QListWidget::item:selected {{ background-color: {hex_of(C.ACCENT_B)};"
             f"  color: white; }}"
         )
+        # ミニターゲット delegate
+        self.setItemDelegate(ShotMiniTargetDelegate(self))
         # currentItemChanged: 矢印キーやマウス選択の両方で発火
         self.currentItemChanged.connect(self._on_current_changed)
 
@@ -5263,7 +5325,10 @@ class ShotListPanel(QListWidget):
             self.on_select(tid)
 
     def reload(self):
-        """現セッション (self._session_id) の shot を session 内連番で表示。"""
+        """現セッション (self._session_id) の shot を session 内連番で表示。
+
+        各 shot の fire_x/fire_y も trace から decode してミニターゲット用に保存。
+        """
         import datetime
         self._suppress = True
         self.clear()
@@ -5273,7 +5338,8 @@ class ShotListPanel(QListWidget):
         try:
             conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=2.0)
             rows = conn.execute(
-                "SELECT sh.shot_id, sh.trace_id, sh.timer, sh.match_shot, sh.missed, sh.favorite "
+                "SELECT sh.shot_id, sh.trace_id, sh.timer, sh.match_shot, sh.missed, sh.favorite, "
+                "       sh.trace_offset, t.data "
                 "FROM shots sh JOIN traces t ON t.trace_id = sh.trace_id "
                 "WHERE sh.deleted = 0 AND t.session_id = ? "
                 "ORDER BY sh.timer ASC",
@@ -5284,8 +5350,8 @@ class ShotListPanel(QListWidget):
             self.addItem(f"<error: {e}>")
             self._suppress = False
             return
-        # 古→新で取得して連番、表示は新→古(新しいのが上)
-        for n, (sid, tid, ts, match, missed, fav) in enumerate(rows, start=1):
+        # 古→新で取得して連番、表示は新→古 (新しいのが上)
+        for n, (sid, tid, ts, match, missed, fav, toff, blob) in enumerate(rows, start=1):
             t_str = datetime.datetime.fromtimestamp(ts / 1000).strftime("%m-%d %H:%M")
             tags = []
             if match: tags.append("M")
@@ -5293,8 +5359,19 @@ class ShotListPanel(QListWidget):
             if missed: tags.append("X")
             tag = " ".join(tags) if tags else ""
             label = f"#{n:>2}  {t_str}  {tag}"
-            self.insertItem(0, label)  # 先頭挿入で新しいのが上
+            # 着弾点を取得 (decode + trace_offset 位置)
+            fx = fy = None
+            try:
+                samples = decode_trace(blob)
+                if 0 <= toff < len(samples):
+                    fx = float(samples[toff][0])
+                    fy = float(samples[toff][1])
+            except Exception:
+                pass
+            self.insertItem(0, label)
             self.item(0).setData(Qt.ItemDataRole.UserRole, tid)
+            self.item(0).setData(Qt.ItemDataRole.UserRole + 1, fx)
+            self.item(0).setData(Qt.ItemDataRole.UserRole + 2, fy)
         self._suppress = False
 
     def set_session(self, session_id: int | None):
