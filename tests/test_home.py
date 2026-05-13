@@ -95,19 +95,21 @@ def test_fetch_recent_with_synthetic_db(tmp_path):
             session_id INTEGER PRIMARY KEY, person_id INTEGER, position INTEGER,
             distance REAL, caliber REAL, sample_rate INTEGER
         );
-        CREATE TABLE traces (session_id INTEGER, timer INTEGER);
-        CREATE TABLE shots (session_id INTEGER);
+        CREATE TABLE traces (trace_id INTEGER PRIMARY KEY, session_id INTEGER, timer INTEGER);
+        CREATE TABLE shots (trace_id INTEGER, deleted INTEGER DEFAULT 0);
     """)
     now_ms = int(datetime.datetime.now().timestamp() * 1000)
     conn.execute("INSERT INTO persons VALUES (1, 'tester', 'TESTER')")
-    # 50m prone
+    # 50m prone (session 1, traces 1-10)
     conn.execute("INSERT INTO sessions VALUES (1, 1, 0, 50.0, 5.6, 120)")
-    conn.execute("INSERT INTO traces VALUES (1, ?)", (now_ms,))
-    conn.executemany("INSERT INTO shots VALUES (?)", [(1,)] * 10)
-    # 10m AR session
+    for tid in range(1, 11):
+        conn.execute("INSERT INTO traces VALUES (?, 1, ?)", (tid, now_ms))
+        conn.execute("INSERT INTO shots (trace_id) VALUES (?)", (tid,))
+    # 10m AR session (session 2, traces 100-159)
     conn.execute("INSERT INTO sessions VALUES (2, 1, 0, 10.0, 4.5, 100)")
-    conn.execute("INSERT INTO traces VALUES (2, ?)", (now_ms - 1000,))
-    conn.executemany("INSERT INTO shots VALUES (?)", [(2,)] * 60)
+    for tid in range(100, 160):
+        conn.execute("INSERT INTO traces VALUES (?, 2, ?)", (tid, now_ms - 1000))
+        conn.execute("INSERT INTO shots (trace_id) VALUES (?)", (tid,))
     conn.commit()
     conn.close()
     rows = HOME.fetch_recent_sessions(str(db), limit=5)
@@ -116,9 +118,11 @@ def test_fetch_recent_with_synthetic_db(tmp_path):
     assert rows[0]["sid"] == 1
     assert rows[0]["shooter"] == "tester"
     assert "伏射" in rows[0]["position"]
+    assert rows[0]["n_shots"] == 10
     # 2 番目 = AR
     assert rows[1]["sid"] == 2
     assert "AR" in rows[1]["position"]
+    assert rows[1]["n_shots"] == 60
 
 
 def test_detect_discipline_label():

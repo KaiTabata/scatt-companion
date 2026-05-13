@@ -71,7 +71,8 @@ def fetch_recent_sessions(db_path: str, limit: int = 10) -> list[dict]:
             SELECT s.session_id, s.position, s.distance, s.caliber,
                    p.name,
                    (SELECT MAX(timer) FROM traces WHERE session_id = s.session_id) AS last_t,
-                   (SELECT COUNT(*) FROM shots WHERE session_id = s.session_id) AS n_shots
+                   (SELECT COUNT(*) FROM shots sh JOIN traces t ON sh.trace_id = t.trace_id
+                    WHERE t.session_id = s.session_id AND sh.deleted = 0) AS n_shots
             FROM sessions s
             LEFT JOIN persons p ON p.person_id = s.person_id
             ORDER BY last_t DESC NULLS LAST LIMIT ?
@@ -106,7 +107,8 @@ def fetch_digest(db_path: str) -> dict:
         rows = conn.execute("""
             SELECT s.session_id,
                    (SELECT MAX(timer) FROM traces WHERE session_id = s.session_id) AS last_t,
-                   (SELECT COUNT(*) FROM shots WHERE session_id = s.session_id) AS n
+                   (SELECT COUNT(*) FROM shots sh JOIN traces t ON sh.trace_id = t.trace_id
+                    WHERE t.session_id = s.session_id AND sh.deleted = 0) AS n
             FROM sessions s
         """).fetchall()
     except sqlite3.Error:

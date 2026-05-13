@@ -34,12 +34,12 @@ from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal, QRectF, QSettings, QB
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPalette, QPen
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QFrame,
-    QGraphicsPathItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QHeaderView,
-    QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox, QPushButton,
-    QScrollArea, QSpinBox, QSplitter, QStatusBar, QStyledItemDelegate,
-    QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QToolBar,
-    QVBoxLayout, QGridLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFormLayout,
+    QFrame, QGraphicsPathItem, QGraphicsScene, QGraphicsView, QHBoxLayout,
+    QHeaderView, QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox,
+    QPushButton, QScrollArea, QSpinBox, QSplitter, QStatusBar,
+    QStyledItemDelegate, QTableWidget, QTableWidgetItem, QTabWidget,
+    QTextBrowser, QToolBar, QVBoxLayout, QGridLayout, QWidget,
 )
 
 # 自作分析モジュール
@@ -141,6 +141,8 @@ class S:
         "home/seen": False,
         # モード (prone / ar / hold_practice)
         "mode": "prone",
+        # テーマ (light / dark) — 再起動で完全反映
+        "theme": "light",
     }
 
     def __init__(self):
@@ -183,6 +185,7 @@ SETTINGS = S()
 T.set_current(SETTINGS.get("discipline") or "rifle_50m")
 # モード (prone / ar / hold_practice) を適用
 MODES.set_current(SETTINGS.get("mode") or "prone")
+# テーマ (light/dark) は _apply_theme 関数 (後で定義) を経由
 # 射手 Profile (extra.db のパスを切替)
 PROFILES = PR.ProfileManager(SETTINGS)
 ST.set_active_path(PROFILES.current().db)
@@ -194,34 +197,67 @@ XOR_KEY = bytes([
 
 # --- 色定義 (白背景・オフィススタイル) ---
 class C:
-    BG       = QColor(255, 255, 255)
-    PANEL    = QColor(250, 250, 251)
-    PANEL_LO = QColor(244, 244, 246)
-    BORDER   = QColor(220, 220, 225)
-    BORDER_STRONG = QColor(180, 180, 185)
-    FG       = QColor(30, 30, 34)
-    FG_MUTED = QColor(110, 110, 118)
-    # アクセント色 (落ち着いた配色)
-    ACCENT_G = QColor(40, 130, 70)     # 良好
-    ACCENT_O = QColor(190, 110, 25)    # 警告
-    ACCENT_R = QColor(180, 50, 50)     # 問題
-    ACCENT_Y = QColor(170, 130, 0)     # 発射点
-    ACCENT_B = QColor(50, 100, 175)    # 情報
-    ACCENT_P = QColor(120, 80, 170)    # 補助
+    """色テーマ。SETTINGS["theme"] (light/dark) に応じて起動時に値が設定される。"""
+    BG = PANEL = PANEL_LO = BORDER = BORDER_STRONG = None  # type: ignore
+    FG = FG_MUTED = None  # type: ignore
+    ACCENT_G = ACCENT_O = ACCENT_R = ACCENT_Y = ACCENT_B = ACCENT_P = None  # type: ignore
+    TARGET_WHITE = TARGET_BLACK = TARGET_LINE_LIGHT = TARGET_LINE_DARK = None  # type: ignore
 
-    # ターゲットは本物のターゲットらしい色 (白背景でも黒地は黒、白地は白)
-    TARGET_WHITE = QColor(245, 245, 245)
-    TARGET_BLACK = QColor(20, 20, 20)
-    TARGET_LINE_LIGHT = QColor(120, 120, 125)
-    TARGET_LINE_DARK  = QColor(220, 220, 220)
+
+def _apply_theme(theme: str):
+    """light / dark テーマを C クラスに適用 + pyqtgraph 背景も切替。
+
+    変更は起動時のみ反映 (Qt の StyleSheet は widget 構築時に評価されるため、
+    すでに作られた widget の色を実行時に完全切替するには再起動が必要)。
+    """
+    if theme == "dark":
+        C.BG       = QColor(28, 30, 34)
+        C.PANEL    = QColor(38, 40, 44)
+        C.PANEL_LO = QColor(46, 48, 52)
+        C.BORDER   = QColor(60, 62, 66)
+        C.BORDER_STRONG = QColor(95, 97, 102)
+        C.FG       = QColor(225, 226, 230)
+        C.FG_MUTED = QColor(155, 156, 162)
+        C.ACCENT_G = QColor(80, 200, 110)
+        C.ACCENT_O = QColor(230, 150, 60)
+        C.ACCENT_R = QColor(230, 90, 90)
+        C.ACCENT_Y = QColor(220, 180, 60)
+        C.ACCENT_B = QColor(110, 165, 235)
+        C.ACCENT_P = QColor(180, 145, 230)
+        C.TARGET_WHITE = QColor(195, 195, 195)
+        C.TARGET_BLACK = QColor(15, 15, 15)
+        C.TARGET_LINE_LIGHT = QColor(140, 140, 140)
+        C.TARGET_LINE_DARK  = QColor(190, 190, 190)
+        pg.setConfigOption('background', (28, 30, 34))
+        pg.setConfigOption('foreground', '#dde')
+    else:  # light (default)
+        C.BG       = QColor(255, 255, 255)
+        C.PANEL    = QColor(250, 250, 251)
+        C.PANEL_LO = QColor(244, 244, 246)
+        C.BORDER   = QColor(220, 220, 225)
+        C.BORDER_STRONG = QColor(180, 180, 185)
+        C.FG       = QColor(30, 30, 34)
+        C.FG_MUTED = QColor(110, 110, 118)
+        C.ACCENT_G = QColor(40, 130, 70)
+        C.ACCENT_O = QColor(190, 110, 25)
+        C.ACCENT_R = QColor(180, 50, 50)
+        C.ACCENT_Y = QColor(170, 130, 0)
+        C.ACCENT_B = QColor(50, 100, 175)
+        C.ACCENT_P = QColor(120, 80, 170)
+        C.TARGET_WHITE = QColor(245, 245, 245)
+        C.TARGET_BLACK = QColor(20, 20, 20)
+        C.TARGET_LINE_LIGHT = QColor(120, 120, 125)
+        C.TARGET_LINE_DARK  = QColor(220, 220, 220)
+        pg.setConfigOption('background', 'w')
+        pg.setConfigOption('foreground', '#333')
 
 
 def hex_of(c: QColor) -> str:
     return f"rgb({c.red()},{c.green()},{c.blue()})"
 
 
-pg.setConfigOption('background', 'w')
-pg.setConfigOption('foreground', '#333')
+# 実際のテーマ (SETTINGS から) を適用
+_apply_theme(SETTINGS.get("theme") or "light")
 
 
 # --- 復号 ---
@@ -1428,6 +1464,19 @@ class DashboardTab(QWidget):
         outer.setContentsMargins(10, 10, 10, 10)
         outer.setSpacing(8)
 
+        # ----- 最上段: 「今の一発」即時診断 (Live 中の主役) -----
+        self.live_diag_label = QLabel("")
+        self.live_diag_label.setWordWrap(True)
+        self.live_diag_label.setTextFormat(Qt.TextFormat.RichText)
+        self.live_diag_label.setStyleSheet(
+            f"QLabel {{ background-color: {hex_of(C.PANEL_LO)};"
+            f"  color: {hex_of(C.FG)}; border: 1px solid {hex_of(C.BORDER)};"
+            "   padding: 10px 14px; font-size: 14px; line-height: 1.5;"
+            "   border-radius: 6px; }"
+        )
+        self.live_diag_label.setVisible(False)
+        outer.addWidget(self.live_diag_label)
+
         # ----- 上段: 主役 4 枚 + ミニターゲット -----
         # 主役 4 枠は SETTINGS から動的に生成 (再構築可能)
         self._hero_row_widget = QWidget()
@@ -1539,6 +1588,52 @@ class DashboardTab(QWidget):
             mu, sigma = stat
             sub = f"過去平均: {mu:.{digits}f} ± {sigma:.{digits}f}"
         self._set_hero(hero, f"{v:.{digits}f}", sub, col)
+
+    def _update_live_diag(self, cur_metrics: dict):
+        """「今の一発」即時診断ラベルを更新。1 行で重要な値を信号色付きで。"""
+        def col(v, lo_good, hi_good=None, low_better=True):
+            """値→色 (緑/黄/赤)。"""
+            if v is None: return "#888"
+            if low_better:
+                if v <= lo_good: return "#2d8a47"
+                if hi_good is not None and v >= hi_good: return "#b53636"
+                return "#c66e19"
+            else:
+                if v >= hi_good: return "#2d8a47"
+                if lo_good is not None and v <= lo_good: return "#b53636"
+                return "#c66e19"
+
+        timing_v = cur_metrics.get("timing_v")
+        hold_s = cur_metrics.get("hold_s")
+        ten_a_05s = cur_metrics.get("ten_a_05s")
+        r95_05 = cur_metrics.get("r95_05")
+        tremor = cur_metrics.get("tremor")
+        parts = []
+        if timing_v is not None:
+            c = col(timing_v, 5, 15)  # 5 以下=良 / 15 以上=悪
+            parts.append(f"<span style='color:{c}'>撃発時 速度 <b>{timing_v:.1f}</b> mm/s</span>")
+        if hold_s is not None:
+            # AR: 0.5-1.5 が理想、極端だと悪
+            c = "#2d8a47" if 0.4 <= hold_s <= 1.5 else "#c66e19"
+            parts.append(f"<span style='color:{c}'>静止 <b>{hold_s:.2f}</b>s</span>")
+        if ten_a_05s is not None:
+            c = col(ten_a_05s, 30, 80, low_better=False)
+            parts.append(f"<span style='color:{c}'>10a-0.5 <b>{ten_a_05s:.0f}%</b></span>")
+        if r95_05 is not None:
+            c = col(r95_05, 3, 7)
+            parts.append(f"<span style='color:{c}'>R95 0.5s <b>{r95_05:.2f}</b>mm</span>")
+        if tremor is not None and tremor > 1e-6:
+            # 相対的に大きいかは個人差なので色なし、表示のみ
+            parts.append(f"<span style='color:#666'>力み <b>{tremor:.4f}</b></span>")
+        if parts:
+            self.live_diag_label.setText(
+                "<div style='font-size:13px;color:#666;margin-bottom:4px'>"
+                "今の一発</div>"
+                "<div style='font-size:15px'>" + " &nbsp; · &nbsp; ".join(parts) + "</div>"
+            )
+            self.live_diag_label.setVisible(True)
+        else:
+            self.live_diag_label.setVisible(False)
 
     def _apply_mode_visibility(self):
         """現在モードの hide_target_metrics に従い、target 系指標行を隠す/出す。"""
@@ -1821,6 +1916,9 @@ class DashboardTab(QWidget):
             self.feedback_label.setText(fb_text)
         except Exception as e:
             self.feedback_label.setText(f"(feedback unavailable: {e})")
+
+        # --- 「今の一発」即時診断 1 行 ---
+        self._update_live_diag(cur_metrics)
 
         # --- 4 枠グラフを更新 ---
         for g in self.graphs:
@@ -4804,6 +4902,16 @@ class SettingsTab(QWidget):
             "変更は次回起動時に反映されます。"
         )
         form_g.addRow("射撃種目", self.cb_discipline)
+        # テーマ (light / dark)
+        self.cb_theme = QComboBox()
+        self.cb_theme.addItem("ライト (白)", "light")
+        self.cb_theme.addItem("ダーク (暗い射場向け)", "dark")
+        cur_theme = SETTINGS.get("theme") or "light"
+        idx = self.cb_theme.findData(cur_theme)
+        if idx >= 0:
+            self.cb_theme.setCurrentIndex(idx)
+        self.cb_theme.setToolTip("変更はアプリ再起動で反映されます。")
+        form_g.addRow("テーマ", self.cb_theme)
         gw = QWidget(); gw.setLayout(form_g); v.addWidget(gw)
 
         # ========== Thresholds ==========
@@ -5198,6 +5306,16 @@ class SettingsTab(QWidget):
                 f"射撃種目を「{T.DISCIPLINES[new_disc].label}」に変更しました。\n"
                 "アプリを再起動すると反映されます。"
             )
+        # テーマ (再起動で反映)
+        new_theme = self.cb_theme.currentData()
+        cur_theme = SETTINGS.get("theme") or "light"
+        if new_theme and new_theme != cur_theme:
+            SETTINGS.set("theme", new_theme)
+            QMessageBox.information(
+                self, "テーマを変更",
+                f"テーマを「{new_theme}」に変更しました。\n"
+                "アプリを再起動すると反映されます。"
+            )
         # 閾値
         SETTINGS.set("thresh/suspicious_radius_mm", self.sp_suspicious.value())
         SETTINGS.set("thresh/hold_velocity_mm_s", self.sp_hold_v.value())
@@ -5448,6 +5566,67 @@ class TargetTab(QGraphicsView):
 # Shot List (左ペイン) — shot 単位の一覧、クリックで該当 trace を表示
 # ===========================================================================
 
+class TwoShotCompareDialog(QDialog):
+    """2 つの shot を side-by-side で比較するダイアログ。
+
+    左右にミニターゲット + 主要指標を並べ、差分を可視化。
+    """
+    def __init__(self, parent, shot_a: dict, shot_b: dict, label_a="A", label_b="B"):
+        super().__init__(parent)
+        self.setWindowTitle(f"shot 比較 — {label_a} vs {label_b}")
+        self.setMinimumSize(720, 460)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 16, 20, 16)
+        title = QLabel(f"shot {label_a} と shot {label_b} を比較")
+        title.setStyleSheet("font-size: 16px; font-weight: 600;")
+        lay.addWidget(title)
+        # 主要指標を計算
+        keys = [
+            ("ten_a_1s",  "10a",            "%",     1, False),
+            ("ten_a_05s", "10a-0.5",        "%",     1, False),
+            ("s1_mm_s",   "S1",             "mm/s",  1, True),
+            ("r95_05",    "R95 0.5s",       "mm",    2, True),
+            ("timing_v",  "撃発時 速度",    "mm/s",  1, True),
+            ("hold_s",    "ホールド時間",   "秒",    2, False),
+            ("tremor",    "力み",           "",      4, True),
+            ("recoil_peak", "反動 peak",    "mm",    2, True),
+        ]
+        # テーブル
+        tbl = QTableWidget(len(keys), 4)
+        tbl.setHorizontalHeaderLabels(["指標", label_a, label_b, "差"])
+        tbl.horizontalHeader().setStretchLastSection(True)
+        tbl.verticalHeader().setVisible(False)
+        tbl.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        tbl.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        for r, (k, label, unit, digits, low_better) in enumerate(keys):
+            va = _shot_metric(shot_a, k)
+            vb = _shot_metric(shot_b, k)
+            tbl.setItem(r, 0, QTableWidgetItem(label))
+            tbl.setItem(r, 1, QTableWidgetItem(
+                f"{va:.{digits}f}{unit}" if va is not None else "—"
+            ))
+            tbl.setItem(r, 2, QTableWidgetItem(
+                f"{vb:.{digits}f}{unit}" if vb is not None else "—"
+            ))
+            diff_item = QTableWidgetItem("—")
+            if va is not None and vb is not None:
+                diff = vb - va
+                sign = "+" if diff >= 0 else ""
+                diff_item = QTableWidgetItem(f"{sign}{diff:.{digits}f}")
+                # 低い方が良い指標で diff > 0 = 悪化、低い方が良くて diff < 0 = 改善
+                if (diff > 0 and low_better) or (diff < 0 and not low_better):
+                    diff_item.setForeground(QBrush(C.ACCENT_R))   # B が悪い
+                elif (diff < 0 and low_better) or (diff > 0 and not low_better):
+                    diff_item.setForeground(QBrush(C.ACCENT_G))   # B が良い
+            tbl.setItem(r, 3, diff_item)
+            tbl.setRowHeight(r, 26)
+        lay.addWidget(tbl, stretch=1)
+        # 閉じる
+        btn = QPushButton("閉じる")
+        btn.clicked.connect(self.accept)
+        lay.addWidget(btn)
+
+
 class ShotMiniTargetDelegate(QStyledItemDelegate):
     """shot list の右端にミニターゲット (16x16) と着弾点を描画する delegate。"""
 
@@ -5530,8 +5709,44 @@ class ShotListPanel(QListWidget):
         )
         # ミニターゲット delegate
         self.setItemDelegate(ShotMiniTargetDelegate(self))
+        # 複数選択許可 (Ctrl/Shift) で比較も可能に
+        self.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        # 右クリックメニュー (比較・お気に入り など)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._on_context_menu)
+        # 外部参照 (MainWindow が session_shots を取得するためのコールバック)
+        self.fetch_shot_dict_by_trace_id = None  # tid → shot dict
         # currentItemChanged: 矢印キーやマウス選択の両方で発火
         self.currentItemChanged.connect(self._on_current_changed)
+
+    def _on_context_menu(self, pos):
+        from PyQt6.QtWidgets import QMenu
+        sel = self.selectedItems()
+        menu = QMenu(self)
+        if len(sel) == 2:
+            act_cmp = menu.addAction("選んだ 2 発を比較…")
+            act_cmp.triggered.connect(self._on_compare_2_shots)
+        elif len(sel) == 1:
+            act_hint = menu.addAction("(2 つ ⌘+クリックで選択して比較できます)")
+            act_hint.setEnabled(False)
+        menu.exec(self.viewport().mapToGlobal(pos))
+
+    def _on_compare_2_shots(self):
+        if not self.fetch_shot_dict_by_trace_id:
+            return
+        sel = self.selectedItems()
+        if len(sel) != 2: return
+        tid_a = sel[0].data(Qt.ItemDataRole.UserRole)
+        tid_b = sel[1].data(Qt.ItemDataRole.UserRole)
+        shot_a = self.fetch_shot_dict_by_trace_id(tid_a)
+        shot_b = self.fetch_shot_dict_by_trace_id(tid_b)
+        if shot_a is None or shot_b is None:
+            QMessageBox.warning(self, "比較不可", "shot データが取得できませんでした")
+            return
+        label_a = sel[0].text().split()[0]  # "#12"
+        label_b = sel[1].text().split()[0]
+        dlg = TwoShotCompareDialog(self, shot_a, shot_b, label_a, label_b)
+        dlg.exec()
 
     def _on_current_changed(self, current, _previous):
         if self._suppress or current is None or self.on_select is None:
@@ -5746,13 +5961,35 @@ class MainWindow(QMainWindow):
         # Settings タブは常時表示
         self.tabs.addTab(self.settings_tab, "Settings")
 
-        # 左ペイン: shot 一覧 (設定で非表示も可)
+        # 左ペイン: フィルタコンボ + shot 一覧 (設定で非表示も可)
         self.shot_list = ShotListPanel(db_path)
         self.shot_list.on_select = self._on_shot_selected
+        # 2 shot 比較用: trace_id → shot dict 取得
+        self.shot_list.fetch_shot_dict_by_trace_id = self._shot_dict_by_trace_id
+        # ラッパー: フィルタ + リスト
+        self.shot_list_wrapper = QWidget()
+        slv = QVBoxLayout(self.shot_list_wrapper)
+        slv.setContentsMargins(0, 0, 0, 0); slv.setSpacing(2)
+        self.shot_filter_combo = QComboBox()
+        self.shot_filter_combo.addItem("すべて", "all")
+        self.shot_filter_combo.addItem("10点圏のみ", "ten")
+        self.shot_filter_combo.addItem("9点以上", "nine_or_better")
+        self.shot_filter_combo.addItem("9点圏外", "below_nine")
+        self.shot_filter_combo.addItem("★お気に入り", "favorites")
+        self.shot_filter_combo.setStyleSheet(
+            f"QComboBox {{ background-color: {hex_of(C.PANEL_LO)};"
+            f"  color: {hex_of(C.FG)}; padding: 3px 8px;"
+            f"  border: 1px solid {hex_of(C.BORDER)}; font-size: 11px; }}"
+        )
+        self.shot_filter_combo.currentIndexChanged.connect(
+            lambda _: self.shot_list.set_filter(self.shot_filter_combo.currentData())
+        )
+        slv.addWidget(self.shot_filter_combo)
+        slv.addWidget(self.shot_list, stretch=1)
 
         self.main_splitter = QSplitter()
         if SETTINGS.get("layout/show_shot_list"):
-            self.main_splitter.addWidget(self.shot_list)
+            self.main_splitter.addWidget(self.shot_list_wrapper)
         self.main_splitter.addWidget(self.tabs)
         # スプリッタ状態の復元 (なければデフォルト)
         splitter_state = SETTINGS.get("window/splitter")
@@ -6182,6 +6419,18 @@ class MainWindow(QMainWindow):
                 self.tabs.setCurrentIndex(i)
                 break
 
+    def _shot_dict_by_trace_id(self, trace_id: int) -> dict | None:
+        """trace_id から session_shots 内の shot dict を取得 (2-shot 比較用)。"""
+        sid = self._current_session_id
+        if sid is None: return None
+        # 全 scope のキャッシュから探す
+        for k, shots in self._session_cache.items():
+            if isinstance(k, tuple) and k[0] == sid:
+                for s in shots:
+                    if s.get("trace_id") == trace_id:
+                        return s
+        return None
+
     def _on_home_session_jump(self, sid: int):
         """ホームの最近セッション行ダブルクリック → そのセッションへ。"""
         self._on_home_start(PROFILES.current_id(), T.current_key())
@@ -6251,12 +6500,12 @@ class MainWindow(QMainWindow):
         self.dashboard.metrics_table.setVisible(SETTINGS.get("layout/show_metrics_table"))
         self.dashboard.feedback_label.setVisible(SETTINGS.get("layout/show_feedback"))
         self.dashboard._graphs_widget.setVisible(SETTINGS.get("layout/show_graphs"))
-        # shot list 表示切替
+        # shot list 表示切替 (wrapper を直接操作)
         show_list = SETTINGS.get("layout/show_shot_list")
-        if show_list and self.shot_list.parent() is None:
-            self.main_splitter.insertWidget(0, self.shot_list)
-        elif not show_list and self.shot_list.parent() is not None:
-            self.shot_list.setParent(None)
+        if show_list and self.shot_list_wrapper.parent() is None:
+            self.main_splitter.insertWidget(0, self.shot_list_wrapper)
+        elif not show_list and self.shot_list_wrapper.parent() is not None:
+            self.shot_list_wrapper.setParent(None)
         # 現在 trace を再描画
         if hasattr(self, "_current_trace_dict"):
             self._apply_trace(self._current_trace_dict)
