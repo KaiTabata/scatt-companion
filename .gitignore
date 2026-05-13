@@ -43,3 +43,11 @@ dist-info/
 
 # Icon iconset intermediate (regenerable)
 assets/icon.iconset/
+
+# 法的・個人データ
+# SCATT 公式マニュアル (SCATT Electronics 著作物、再配布不可)
+SCATT_MX-02_*.pdf
+SCATT_MX*.pdf
+
+# 個人射撃データ (本人の同意を取らずに公開しないため)
+video/public/data/*.json
