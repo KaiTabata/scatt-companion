@@ -1524,6 +1524,22 @@ class DashboardTab(QWidget):
             sub = f"過去平均: {mu:.{digits}f} ± {sigma:.{digits}f}"
         self._set_hero(hero, f"{v:.{digits}f}", sub, col)
 
+    def _apply_mode_visibility(self):
+        """現在モードの hide_target_metrics に従い、target 系指標行を隠す/出す。"""
+        hide = MODES.current().hide_target_metrics
+        target_keys = {"ten_a_1s", "ten_a_05s", "ten_b_1s", "ten_b_05s",
+                       "nine_c_1s", "r95_1", "r95_05", "r95_2", "r95_3"}
+        # metrics_table はまだ作られていない場合がある (init 順序)
+        if hasattr(self, "metrics_table"):
+            for row, (key, _, _, _, _) in enumerate(METRICS):
+                self.metrics_table.setRowHidden(row, hide and key in target_keys)
+        # mini_target もホールド練習モードでは非表示
+        if hasattr(self, "mini_target"):
+            if hide:
+                self.mini_target.setVisible(False)
+            else:
+                self.mini_target.setVisible(SETTINGS.get("layout/show_mini_target"))
+
     def _rebuild_hero_row(self):
         """主役 KPI 4 枠 + ミニターゲットを SETTINGS から再構築。"""
         # 既存 widget を削除
@@ -1580,8 +1596,8 @@ class DashboardTab(QWidget):
         # 再追加
         self._hero_row_layout.addLayout(kpi_grid, stretch=3)
         self._hero_row_layout.addWidget(self.mini_target, stretch=0)
-        # 可視性
-        self.mini_target.setVisible(SETTINGS.get("layout/show_mini_target"))
+        # 可視性 (モードのフラグも考慮)
+        self._apply_mode_visibility()
 
     def rebuild_graphs(self, rows: int, cols: int):
         """グラフ枠数を変更して再構築。"""
@@ -3805,6 +3821,17 @@ class SessionDetailPanel(QWidget):
         )
         outer.addWidget(self.header)
 
+        # 総括カード (best/worst shot + 前回比 + 一言)
+        self.summary_card = QLabel("")
+        self.summary_card.setWordWrap(True)
+        self.summary_card.setTextFormat(Qt.TextFormat.RichText)
+        self.summary_card.setStyleSheet(
+            f"QLabel {{ background-color: #f6f8fb; color: {hex_of(C.FG)};"
+            f"  border: 1px solid {hex_of(C.BORDER)}; padding: 10px 14px;"
+            "   font-size: 13px; line-height: 1.55; border-radius: 6px; }"
+        )
+        outer.addWidget(self.summary_card)
+
         # KPI 6 枚 (10a μ, 10a-0.5 μ, S1 μ, S2 μ, Peak μ, HR μ)
         kpi_row = QHBoxLayout()
         kpi_row.setSpacing(6)
@@ -4029,6 +4056,98 @@ class SessionDetailPanel(QWidget):
             self.session_feedback_label.setText(FB.session_feedback(session_shots))
         except Exception as e:
             self.session_feedback_label.setText(f"(feedback unavailable: {e})")
+
+        # === 総括カード ===
+        self._update_summary_card(session_shots, ten_a_vals, ten_a5_vals,
+                                  s1_vals, s2_vals, peak_vals)
+
+    def _update_summary_card(self, session_shots, ten_a_vals, ten_a5_vals,
+                              s1_vals, s2_vals, peak_vals):
+        """セッション総括カードを更新。
+
+        ベストショット (最小 fire_r) / ワーストショット (最大) / 平均値 /
+        一言まとめ を 1 枚のカードに表示。
+        """
+        n = len(session_shots) if session_shots else 0
+        if n == 0:
+            self.summary_card.setText("")
+            return
+
+        # 各 shot の中心からの距離
+        shots_with_r = []
+        for i, s in enumerate(session_shots):
+            fx, fy = s.get("fire_x"), s.get("fire_y")
+            if fx is None or fy is None:
+                continue
+            r = float(np.hypot(fx, fy))
+            shots_with_r.append((i + 1, r, s))
+
+        best_str = worst_str = ""
+        if shots_with_r:
+            best = min(shots_with_r, key=lambda x: x[1])
+            worst = max(shots_with_r, key=lambda x: x[1])
+            best_str = (
+                f"<b style='color:#2d8a47'>● ベスト</b>: #{best[0]}  "
+                f"(中心から {best[1]:.2f}mm)"
+            )
+            worst_str = (
+                f"<b style='color:#b53636'>● ワースト</b>: #{worst[0]}  "
+                f"(中心から {worst[1]:.2f}mm)"
+            )
+
+        # 主要指標の平均
+        mu_parts = []
+        if ten_a_vals:
+            mu_parts.append(f"10a μ = <b>{np.mean(ten_a_vals):.1f}%</b>")
+        if s1_vals:
+            mu_parts.append(f"S1 μ = <b>{np.mean(s1_vals):.2f}mm</b>")
+        if peak_vals:
+            mu_parts.append(f"反動 peak μ = <b>{np.mean(peak_vals):.2f}mm</b>")
+
+        # 一言まとめ
+        takeaway = self._compute_takeaway(ten_a_vals, s1_vals, peak_vals)
+
+        html = (
+            f"<div style='font-size:14px;font-weight:600;margin-bottom:6px'>"
+            f"今日のセッション総括 — <b>{n}</b> shots</div>"
+            f"<div style='font-size:12px;line-height:1.7'>"
+            f"&nbsp;&nbsp;{best_str}<br>"
+            f"&nbsp;&nbsp;{worst_str}<br>"
+            f"&nbsp;&nbsp;{' &nbsp;·&nbsp; '.join(mu_parts)}<br>"
+            f"&nbsp;&nbsp;<span style='color:#467abe'>{takeaway}</span>"
+            f"</div>"
+        )
+        self.summary_card.setText(html)
+
+    @staticmethod
+    def _compute_takeaway(ten_a_vals, s1_vals, peak_vals) -> str:
+        """セッションの簡潔な所見 1 行 (前半 vs 後半の傾向)。"""
+        parts = []
+        # 10a の前半 / 後半
+        if len(ten_a_vals) >= 10:
+            half = len(ten_a_vals) // 2
+            f, s = float(np.mean(ten_a_vals[:half])), float(np.mean(ten_a_vals[half:]))
+            if s - f > 5:
+                parts.append("後半に集中力が乗ってる")
+            elif f - s > 5:
+                parts.append("後半に 10a 低下 — 疲労 or 集中切れの可能性")
+        # S1
+        if len(s1_vals) >= 10:
+            half = len(s1_vals) // 2
+            f, s = float(np.mean(s1_vals[:half])), float(np.mean(s1_vals[half:]))
+            if s - f > 0.5:
+                parts.append("後半 S1 上昇 (動きが速くなった)")
+            elif f - s > 0.5:
+                parts.append("後半 S1 改善 (動きが落ち着いた)")
+        # Peak
+        if len(peak_vals) >= 10:
+            half = len(peak_vals) // 2
+            f, s = float(np.mean(peak_vals[:half])), float(np.mean(peak_vals[half:]))
+            if s - f > 5:
+                parts.append("反動受けが後半悪化")
+        if not parts:
+            return "全体的に安定した内容。"
+        return " · ".join(parts) + "。"
 
 
 class SessionsTab(QWidget):
