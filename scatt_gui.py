@@ -474,6 +474,14 @@ def _metric_value(t: dict, key: str) -> float | None:
     # s2_mm_s: 内部計算は残すが METRICS から除外 (本家との完全一致が未確認のため)
     if key == "da_mm":
         return t.get("da_mm")  # session 集計時に注入
+    if key == "followthrough_ratio":
+        return summ.get("followthrough_ratio")
+    if key == "post_v_mean_05":
+        return summ.get("post_v_mean_05")
+    if key == "centroid_r95_05":
+        return summ.get("centroid_r95_05")
+    if key == "centroid_r95_full":
+        return summ.get("centroid_r95_full")
     if key == "r95_05":
         return (summ.get("last_05s") or {}).get("r95")
     if key == "cant_at_fire_deg":
@@ -564,12 +572,17 @@ METRICS = [
     ("approach_signs",   "狙い直し /秒",                "",     "low_good",     1),
     ("hr_at_fire",       "心拍 (撃発時)",               "bpm",  "low_good",     0),
     ("rmssd_30s",        "心拍変動 HRV (直近30秒)",     "ms",   "high_good",    1),
-    # ----- 反動受け -----
+    # ----- 反動受け / フォロースルー -----
     ("recoil_peak",         "反動の振幅",                  "mm",   "low_good",     1),
     ("recoil_settle",       "反動の戻り時間",              "秒",   "low_good",     2),
     ("recoil_post05_r95",   "フォロースルー安定",          "mm",   "low_good",     1),
     ("recoil_dir_std",      "反動方向のばらつき",          "°",    "low_good",     0),
     ("recoil_direction",    "反動方向",                    "°",    "info",         0),
+    ("followthrough_ratio", "発射前後 R95 比",            "",     "low_good",     2),
+    ("post_v_mean_05",      "発射後 0.5秒 平均速度",      "mm/s", "low_good",     1),
+    # ----- ホールド練習用 (ターゲット非依存) -----
+    ("centroid_r95_05",     "重心 R95 直前 0.5秒",        "mm",   "low_good",     2),
+    ("centroid_r95_full",   "重心 R95 (発射前 全体)",     "mm",   "low_good",     2),
 ]
 
 
@@ -3056,6 +3069,97 @@ def _gr_cant_sd_history(pw, t_arr, samples, sr, sessshots):
 GRAPH_KINDS.append(("cant_sd_history", "発射前 銃傾きの揺れ 推移",         _gr_cant_sd_history))
 GRAPH_KINDS.append(("best_vs_worst",   "ベスト 5 vs ワースト 5  比較",     _gr_best_vs_worst))
 GRAPH_KINDS.append(("condition_map",   "コンディションマップ (心拍×HRV×S2)", _gr_condition_map))
+
+
+def _gr_followthrough_overlay(pw, t_arr, samples, sr, sessshots):
+    """発射前後 trace 重ね描き — フォロースルー一貫性の可視化。
+
+    青 = 発射前 0.5 秒、赤 = 発射後 0.5 秒、黄 = 発射点。
+    青と赤の重心が一致するほどフォロースルーが良い。
+    """
+    pw.clear()
+    _setup_plot(pw, title="発射前後 軌跡 重ね  (青=発射前 0.5s · 赤=発射後 0.5s)",
+                x_label="X", x_unit="mm",
+                y_label="Y", y_unit="mm")
+    pw.setAspectLocked(True)
+    pw.addLine(x=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
+    pw.addLine(y=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
+    if not samples or t_arr.trace_offset is None:
+        _empty_message(pw, "軌跡データがありません")
+        return
+    n_05 = int(round(0.5 * sr))
+    toff = t_arr.trace_offset
+    xs = np.array([s[0] for s in samples])
+    ys = -np.array([s[1] for s in samples])  # y 反転
+    # 発射前 0.5 秒
+    pre_start = max(0, toff - n_05)
+    pw.plot(xs[pre_start:toff + 1], ys[pre_start:toff + 1],
+            pen=pg.mkPen(C.ACCENT_B, width=1.6))
+    # 発射後 0.5 秒
+    post_end = min(len(samples), toff + n_05)
+    pw.plot(xs[toff:post_end], ys[toff:post_end],
+            pen=pg.mkPen(C.ACCENT_R, width=1.2))
+    # 発射点マーカー
+    pw.plot([xs[toff]], [ys[toff]],
+            pen=None, symbol='+', symbolSize=14,
+            symbolPen=pg.mkPen(C.ACCENT_Y, width=2), symbolBrush=None)
+    # 各セグメントの重心
+    pre_seg = np.array(samples[pre_start:toff+1])[:, :2]
+    post_seg = np.array(samples[toff:post_end])[:, :2]
+    if len(pre_seg) > 0 and len(post_seg) > 0:
+        cx_pre, cy_pre = float(np.mean(pre_seg[:, 0])), -float(np.mean(pre_seg[:, 1]))
+        cx_post, cy_post = float(np.mean(post_seg[:, 0])), -float(np.mean(post_seg[:, 1]))
+        pw.plot([cx_pre], [cy_pre], pen=None, symbol='x', symbolSize=12,
+                symbolPen=pg.mkPen(C.ACCENT_B, width=2.5), symbolBrush=None)
+        pw.plot([cx_post], [cy_post], pen=None, symbol='x', symbolSize=12,
+                symbolPen=pg.mkPen(C.ACCENT_R, width=2.5), symbolBrush=None)
+        dist = float(np.hypot(cx_pre - cx_post, cy_pre - cy_post))
+        pw.setTitle(
+            f"発射前後 軌跡  (重心ズレ {dist:.2f}mm — 小さいほどフォロースルー良)",
+            color=_color_hex(C.FG), size="11pt"
+        )
+
+
+def _gr_centroid_trace(pw, t_arr, samples, sr, sessshots):
+    """ホールド練習用: trace を重心中心に表示 (ターゲット位置不問)。
+
+    銃そのものの動きの広がりだけを見る。
+    """
+    pw.clear()
+    _setup_plot(pw, title="ホールド軌跡  (重心中心、ターゲット非依存)",
+                x_label="ΔX (重心から)", x_unit="mm",
+                y_label="ΔY (重心から)", y_unit="mm")
+    pw.setAspectLocked(True)
+    pw.addLine(x=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
+    pw.addLine(y=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
+    if not samples or t_arr.trace_offset is None:
+        _empty_message(pw, "軌跡データがありません")
+        return
+    toff = t_arr.trace_offset
+    seg = np.array(samples[:toff+1])[:, :2]
+    if len(seg) < 2:
+        return
+    cx, cy = float(np.mean(seg[:, 0])), float(np.mean(seg[:, 1]))
+    dx = seg[:, 0] - cx
+    dy = -(seg[:, 1] - cy)
+    pw.plot(dx, dy, pen=pg.mkPen(C.ACCENT_G, width=1.2))
+    pw.plot([dx[-1]], [dy[-1]], pen=None, symbol='+',
+            symbolSize=14, symbolPen=pg.mkPen(C.ACCENT_Y, width=2),
+            symbolBrush=None)
+    # R95 円
+    r = np.hypot(dx, dy)
+    r95 = float(np.percentile(r, 95))
+    theta = np.linspace(0, 2*np.pi, 60)
+    pw.plot(r95 * np.cos(theta), r95 * np.sin(theta),
+            pen=pg.mkPen(C.ACCENT_O, width=1, style=Qt.PenStyle.DashLine))
+    pw.setTitle(
+        f"ホールド軌跡  (重心 R95 = {r95:.2f}mm)",
+        color=_color_hex(C.FG), size="11pt"
+    )
+
+
+GRAPH_KINDS.append(("followthrough_overlay", "発射前後 軌跡 重ね",         _gr_followthrough_overlay))
+GRAPH_KINDS.append(("centroid_trace",        "ホールド軌跡 (重心中心)",   _gr_centroid_trace))
 
 
 class CantTab(QWidget):

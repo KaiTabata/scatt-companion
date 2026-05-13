@@ -56,8 +56,8 @@ MODES: dict[str, Mode] = {
         suggested_discipline="rifle_10m",
         hero_kpis=("timing_v", "s1_mm_s", "hr_at_fire", "recoil_post05_r95"),
         default_graphs=(
-            "velocity", "timing_history", "cant_history", "spectrum",
-            "recoil_xy", "hr_time", "r95_history", "trace_xy",
+            "velocity", "followthrough_overlay", "cant_history", "spectrum",
+            "timing_history", "hr_time", "r95_history", "trace_xy",
             "hr_vs_r95",
         ),
         show_velocity_hero=True,
@@ -71,11 +71,11 @@ MODES: dict[str, Mode] = {
             "重心 R95 + 平均速度 + 力み のみ。10a 等のターゲット中心指標は隠す。"
         ),
         suggested_discipline="rifle_10m",
-        hero_kpis=("timing_v", "s1_mm_s", "tremor", "cant_sd_deg"),
+        hero_kpis=("timing_v", "s1_mm_s", "centroid_r95_05", "tremor"),
         default_graphs=(
-            "velocity", "cant_time", "spectrum", "cant_history",
-            "timing_history", "hold_history", "trace_xy",
-            "cant_sd_history", "recoil_speed",
+            "velocity", "centroid_trace", "spectrum", "cant_history",
+            "cant_time", "timing_history", "hold_history",
+            "cant_sd_history", "trace_xy",
         ),
         show_velocity_hero=True,
         enhanced_status_bar=True,
