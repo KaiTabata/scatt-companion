@@ -52,13 +52,14 @@ MODES: dict[str, Mode] = {
         description=(
             "立射特化。撃発時速度・S1・心拍・フォロースルー安定 を主軸。"
             "反動の振幅でなくフォロースルーの一貫性を重視。"
+            "S1 と着弾の相関、銃の安定度と精度の関係を実データで可視化。"
         ),
         suggested_discipline="rifle_10m",
         hero_kpis=("timing_v", "s1_mm_s", "hr_at_fire", "recoil_post05_r95"),
         default_graphs=(
-            "velocity", "followthrough_overlay", "cant_history", "spectrum",
-            "timing_history", "hr_time", "r95_history", "trace_xy",
-            "hr_vs_r95",
+            "velocity", "followthrough_overlay", "s1_vs_fire_r", "spectrum",
+            "centroid_vs_ten_a", "s1_history", "hr_time", "trace_xy",
+            "cant_history",
         ),
         show_velocity_hero=True,
         enhanced_status_bar=True,
