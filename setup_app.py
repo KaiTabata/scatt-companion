@@ -57,6 +57,12 @@ OPTIONS = {
     "excludes": [
         "matplotlib", "scipy", "PyQt5", "PySide2", "PySide6",
         "test", "tests", "pytest",
+        # WebEngine は 200MB 級で重く、本アプリでは不要
+        "PyQt6.QtWebEngineCore", "PyQt6.QtWebEngineWidgets",
+        "PyQt6.QtWebEngine", "PyQt6.QtWebChannel",
+        # 他にも使わない Qt モジュール
+        "PyQt6.QtMultimedia", "PyQt6.QtMultimediaWidgets",
+        "PyQt6.Qt3DCore", "PyQt6.Qt3DRender",
     ],
     # bleak が ObjC 系を使うので site-packages を取り込む
     "site_packages": True,
