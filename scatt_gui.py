@@ -922,6 +922,17 @@ def _gr_trace_xy(pw, t_arr, samples, sr, sessshots):
         pw.plot(xs, ys, pen=pg.mkPen(C.ACCENT_G, width=1.5))
 
 
+def _has_cant_data(samples) -> bool:
+    """samples の cant が記録されているか (旧 SCATT 形式は全 0)。"""
+    if not samples:
+        return False
+    # 任意のサンプルが非ゼロなら記録あり
+    for s in samples[: min(200, len(samples))]:
+        if abs(s[2]) > 1e-6:
+            return True
+    return False
+
+
 def _gr_cant_time(pw, t_arr, samples, sr, sessshots):
     pw.clear()
     _setup_plot(pw, title="銃の傾き 時系列  (現 trace)",
@@ -930,6 +941,10 @@ def _gr_cant_time(pw, t_arr, samples, sr, sessshots):
     pw.addLine(x=0, pen=pg.mkPen(C.ACCENT_Y, width=1.5, style=Qt.PenStyle.DashLine))
     if not samples:
         _empty_message(pw, "軌跡データがありません")
+        return
+    if not _has_cant_data(samples):
+        _empty_message(pw, "このデータには銃の傾き (cant) 情報がありません\n"
+                       "(SCATT 旧フォーマットでは未記録)")
         return
     cants = np.array([np.degrees(s[2]) for s in samples])
     t_axis = np.arange(len(cants)) / sr
@@ -1008,11 +1023,16 @@ def _gr_cant_history(pw, t_arr, samples, sr, sessshots):
         return
     xs, ys = [], []
     for i, s in enumerate(sessshots):
-        if s.get("fire_cant") is not None:
-            xs.append(i); ys.append(np.degrees(s["fire_cant"]))
-    if xs:
-        pw.plot(xs, ys, pen=pg.mkPen(C.ACCENT_B, width=1.5), symbol='o',
-                symbolSize=5, symbolBrush=C.ACCENT_B, symbolPen=pg.mkPen(None))
+        c = s.get("fire_cant")
+        if c is not None:
+            xs.append(i); ys.append(np.degrees(c))
+    # 全て 0 なら「データなし」表示
+    if not xs or all(abs(v) < 1e-6 for v in ys):
+        _empty_message(pw, "このセッションには銃の傾き (cant) 情報がありません\n"
+                       "(SCATT 旧フォーマットでは未記録)")
+        return
+    pw.plot(xs, ys, pen=pg.mkPen(C.ACCENT_B, width=1.5), symbol='o',
+            symbolSize=5, symbolBrush=C.ACCENT_B, symbolPen=pg.mkPen(None))
 
 
 def _gr_timing_history(pw, t_arr, samples, sr, sessshots):
@@ -3206,6 +3226,10 @@ def _gr_cant_sd_history(pw, t_arr, samples, sr, sessshots):
         if v is not None:
             xs.append(i)
             ys.append(np.degrees(v))
+    # 全て 0 = データなし
+    if not xs or all(abs(v) < 1e-6 for v in ys):
+        _empty_message(pw, "このセッションには銃の傾き (cant) 情報がありません")
+        return
     if xs:
         pw.plot(xs, ys, pen=pg.mkPen(C.ACCENT_O, width=1.5),
                 symbol='o', symbolSize=5, symbolBrush=C.ACCENT_O,
@@ -5669,15 +5693,23 @@ class ShotMiniTargetDelegate(QStyledItemDelegate):
             k = max_r / r
             cx = (tx + self.SIZE/2) + dx * k
             cy = (ty + self.SIZE/2) + dy * k
-        # 中心からの距離でランク色
+        # 中心からの距離でランク色 (discipline ごとのリング半径を使う)
         r_mm = (fx * fx + fy * fy) ** 0.5
-        r10 = T.current().ring_10_radius_mm
-        if r_mm <= r10:
-            col = QColor(56, 196, 89)        # 緑 = 10 点圏
-        elif r_mm <= r10 * 2:
-            col = QColor(220, 170, 50)       # 黄 = 9 点付近
+        d = T.current()
+        # ring step が分かるので 9-ring 半径 = R10 + ring_step (radius)
+        # AR では R10=0.25mm dot だが、9 ring は 2.75mm なので色判定はそちらをベース
+        # 5-ring くらいまで黒地、その外は白地
+        r_10 = d.ring_10_radius_mm                            # 10 圏
+        r_9 = r_10 + d.ring_step_mm / 2                       # 9 圏 (ring step は直径)
+        r_8 = r_10 + (d.ring_step_mm / 2) * 2                 # 8 圏
+        if r_mm <= r_10:
+            col = QColor(56, 196, 89)        # 緑 = 10 圏
+        elif r_mm <= r_9:
+            col = QColor(120, 200, 120)      # 薄緑 = 9 圏
+        elif r_mm <= r_8:
+            col = QColor(220, 170, 50)       # 黄 = 8 圏
         else:
-            col = QColor(220, 70, 70)        # 赤 = 外
+            col = QColor(220, 70, 70)        # 赤 = 7 圏以下
         painter.setBrush(QBrush(col))
         painter.setPen(QPen(QColor(255, 255, 255), 0.6))
         d = 3.0
@@ -5771,7 +5803,9 @@ class ShotListPanel(QListWidget):
             for i in range(self.count()):
                 self.setRowHidden(i, False)
             return
-        r10 = T.current().ring_10_radius_mm
+        d = T.current()
+        r_10 = d.ring_10_radius_mm
+        r_9 = r_10 + d.ring_step_mm / 2
         for i in range(self.count()):
             item = self.item(i)
             fx = item.data(Qt.ItemDataRole.UserRole + 1)
@@ -5784,11 +5818,11 @@ class ShotListPanel(QListWidget):
             else:
                 r = (fx*fx + fy*fy) ** 0.5
                 if self._filter == "ten":
-                    keep = r <= r10
+                    keep = r <= r_10
                 elif self._filter == "nine_or_better":
-                    keep = r <= r10 * 2
+                    keep = r <= r_9
                 elif self._filter == "below_nine":
-                    keep = r > r10 * 2
+                    keep = r > r_9
             if self._filter == "favorites":
                 keep = "★" in text
             self.setRowHidden(i, not keep)

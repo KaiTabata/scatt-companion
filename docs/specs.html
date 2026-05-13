@@ -67,7 +67,7 @@
       <li><a href="#system">システム構成</a></li>
       <li><a href="#modes">3 モード</a></li>
       <li><a href="#disciplines">射撃種目</a></li>
-      <li><a href="#metrics">指標 27 種</a></li>
+      <li><a href="#metrics">指標 32 種</a></li>
       <li><a href="#graphs">グラフ 30 種</a></li>
       <li><a href="#data">データ管理</a></li>
       <li><a href="#shortcuts">ショートカット</a></li>
@@ -87,7 +87,7 @@
   </p>
   <p><b>本ソフトが提供する付加価値</b>:</p>
   <ul>
-    <li>本家にない 27 個の補助指標 (重心 R95 / 力み / フォロースルー比 等)</li>
+    <li>本家にない 32 個の補助指標 (重心 R95 / 力み / フォロースルー比 等)</li>
     <li>セッション横断レビュー (前半 vs 後半 / ベスト vs ワースト)</li>
     <li>個人 z-score ランキング (「今回特にダメな指標」を浮かび上がらせる)</li>
     <li>BLE 心拍計 (Apple Watch / Polar H10 等) 連携</li>
@@ -151,7 +151,7 @@
   </table>
   <p>これらは <code>scatt_target.DISCIPLINES</code> に定義され、Settings から切替可。10a / 10b / 9c の判定半径も種目に追従します。</p>
 
-  <h2 id="metrics">5. 指標 27 種</h2>
+  <h2 id="metrics">5. 指標 32 種</h2>
   <p>UI で右クリック → 計算式 でいつでも数式を確認できます。本家 SCATT 互換 / 本ソフト独自 を区別表示。</p>
 
   <h3>SCATT 本家互換</h3>
@@ -308,7 +308,7 @@
   <table>
     <tr><th>モジュール</th><th>責務</th></tr>
     <tr><td><code>scatt_gui.py</code></td><td>メイン GUI (MainWindow / Dashboard / Sessions タブ等)</td></tr>
-    <tr><td><code>scatt_analysis.py</code></td><td>数値解析 (FFT / R95 / 速度 / 反動 / 27 指標)</td></tr>
+    <tr><td><code>scatt_analysis.py</code></td><td>数値解析 (FFT / R95 / 速度 / 反動 / 32 指標)</td></tr>
     <tr><td><code>scatt_storage.py</code></td><td>補助 DB (心拍 / hidden フラグ)</td></tr>
     <tr><td><code>scatt_heart.py</code></td><td>BLE 心拍受信 + RMSSD 計算</td></tr>
     <tr><td><code>scatt_target.py</code></td><td>射撃種目 (50m / 10m AR / 10m AP) 定義</td></tr>
