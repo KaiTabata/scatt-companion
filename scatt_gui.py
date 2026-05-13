@@ -141,8 +141,6 @@ class S:
         "home/seen": False,
         # モード (prone / ar / hold_practice)
         "mode": "prone",
-        # テーマ (light / dark) — 再起動で完全反映
-        "theme": "light",
     }
 
     def __init__(self):
@@ -185,7 +183,6 @@ SETTINGS = S()
 T.set_current(SETTINGS.get("discipline") or "rifle_50m")
 # モード (prone / ar / hold_practice) を適用
 MODES.set_current(SETTINGS.get("mode") or "prone")
-# テーマ (light/dark) は _apply_theme 関数 (後で定義) を経由
 # 射手 Profile (extra.db のパスを切替)
 PROFILES = PR.ProfileManager(SETTINGS)
 ST.set_active_path(PROFILES.current().db)
@@ -195,69 +192,33 @@ XOR_KEY = bytes([
 ])
 
 
-# --- 色定義 (白背景・オフィススタイル) ---
+# --- 色定義 (白基調・オフィススタイル) ---
 class C:
-    """色テーマ。SETTINGS["theme"] (light/dark) に応じて起動時に値が設定される。"""
-    BG = PANEL = PANEL_LO = BORDER = BORDER_STRONG = None  # type: ignore
-    FG = FG_MUTED = None  # type: ignore
-    ACCENT_G = ACCENT_O = ACCENT_R = ACCENT_Y = ACCENT_B = ACCENT_P = None  # type: ignore
-    TARGET_WHITE = TARGET_BLACK = TARGET_LINE_LIGHT = TARGET_LINE_DARK = None  # type: ignore
-
-
-def _apply_theme(theme: str):
-    """light / dark テーマを C クラスに適用 + pyqtgraph 背景も切替。
-
-    変更は起動時のみ反映 (Qt の StyleSheet は widget 構築時に評価されるため、
-    すでに作られた widget の色を実行時に完全切替するには再起動が必要)。
-    """
-    if theme == "dark":
-        C.BG       = QColor(28, 30, 34)
-        C.PANEL    = QColor(38, 40, 44)
-        C.PANEL_LO = QColor(46, 48, 52)
-        C.BORDER   = QColor(60, 62, 66)
-        C.BORDER_STRONG = QColor(95, 97, 102)
-        C.FG       = QColor(225, 226, 230)
-        C.FG_MUTED = QColor(155, 156, 162)
-        C.ACCENT_G = QColor(80, 200, 110)
-        C.ACCENT_O = QColor(230, 150, 60)
-        C.ACCENT_R = QColor(230, 90, 90)
-        C.ACCENT_Y = QColor(220, 180, 60)
-        C.ACCENT_B = QColor(110, 165, 235)
-        C.ACCENT_P = QColor(180, 145, 230)
-        C.TARGET_WHITE = QColor(195, 195, 195)
-        C.TARGET_BLACK = QColor(15, 15, 15)
-        C.TARGET_LINE_LIGHT = QColor(140, 140, 140)
-        C.TARGET_LINE_DARK  = QColor(190, 190, 190)
-        pg.setConfigOption('background', (28, 30, 34))
-        pg.setConfigOption('foreground', '#dde')
-    else:  # light (default)
-        C.BG       = QColor(255, 255, 255)
-        C.PANEL    = QColor(250, 250, 251)
-        C.PANEL_LO = QColor(244, 244, 246)
-        C.BORDER   = QColor(220, 220, 225)
-        C.BORDER_STRONG = QColor(180, 180, 185)
-        C.FG       = QColor(30, 30, 34)
-        C.FG_MUTED = QColor(110, 110, 118)
-        C.ACCENT_G = QColor(40, 130, 70)
-        C.ACCENT_O = QColor(190, 110, 25)
-        C.ACCENT_R = QColor(180, 50, 50)
-        C.ACCENT_Y = QColor(170, 130, 0)
-        C.ACCENT_B = QColor(50, 100, 175)
-        C.ACCENT_P = QColor(120, 80, 170)
-        C.TARGET_WHITE = QColor(245, 245, 245)
-        C.TARGET_BLACK = QColor(20, 20, 20)
-        C.TARGET_LINE_LIGHT = QColor(120, 120, 125)
-        C.TARGET_LINE_DARK  = QColor(220, 220, 220)
-        pg.setConfigOption('background', 'w')
-        pg.setConfigOption('foreground', '#333')
+    BG       = QColor(255, 255, 255)
+    PANEL    = QColor(250, 250, 251)
+    PANEL_LO = QColor(244, 244, 246)
+    BORDER   = QColor(220, 220, 225)
+    BORDER_STRONG = QColor(180, 180, 185)
+    FG       = QColor(30, 30, 34)
+    FG_MUTED = QColor(110, 110, 118)
+    ACCENT_G = QColor(40, 130, 70)
+    ACCENT_O = QColor(190, 110, 25)
+    ACCENT_R = QColor(180, 50, 50)
+    ACCENT_Y = QColor(170, 130, 0)
+    ACCENT_B = QColor(50, 100, 175)
+    ACCENT_P = QColor(120, 80, 170)
+    TARGET_WHITE = QColor(245, 245, 245)
+    TARGET_BLACK = QColor(20, 20, 20)
+    TARGET_LINE_LIGHT = QColor(120, 120, 125)
+    TARGET_LINE_DARK  = QColor(220, 220, 220)
 
 
 def hex_of(c: QColor) -> str:
     return f"rgb({c.red()},{c.green()},{c.blue()})"
 
 
-# 実際のテーマ (SETTINGS から) を適用
-_apply_theme(SETTINGS.get("theme") or "light")
+pg.setConfigOption('background', 'w')
+pg.setConfigOption('foreground', '#333')
 
 
 # --- 復号 ---
@@ -4926,16 +4887,6 @@ class SettingsTab(QWidget):
             "変更は次回起動時に反映されます。"
         )
         form_g.addRow("射撃種目", self.cb_discipline)
-        # テーマ (light / dark)
-        self.cb_theme = QComboBox()
-        self.cb_theme.addItem("ライト (白)", "light")
-        self.cb_theme.addItem("ダーク (暗い射場向け)", "dark")
-        cur_theme = SETTINGS.get("theme") or "light"
-        idx = self.cb_theme.findData(cur_theme)
-        if idx >= 0:
-            self.cb_theme.setCurrentIndex(idx)
-        self.cb_theme.setToolTip("変更はアプリ再起動で反映されます。")
-        form_g.addRow("テーマ", self.cb_theme)
         gw = QWidget(); gw.setLayout(form_g); v.addWidget(gw)
 
         # ========== Thresholds ==========
@@ -5328,16 +5279,6 @@ class SettingsTab(QWidget):
             QMessageBox.information(
                 self, "射撃種目を変更",
                 f"射撃種目を「{T.DISCIPLINES[new_disc].label}」に変更しました。\n"
-                "アプリを再起動すると反映されます。"
-            )
-        # テーマ (再起動で反映)
-        new_theme = self.cb_theme.currentData()
-        cur_theme = SETTINGS.get("theme") or "light"
-        if new_theme and new_theme != cur_theme:
-            SETTINGS.set("theme", new_theme)
-            QMessageBox.information(
-                self, "テーマを変更",
-                f"テーマを「{new_theme}」に変更しました。\n"
                 "アプリを再起動すると反映されます。"
             )
         # 閾値

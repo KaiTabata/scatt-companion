@@ -49,5 +49,6 @@ assets/icon.iconset/
 SCATT_MX-02_*.pdf
 SCATT_MX*.pdf
 
-# 個人射撃データ (本人の同意を取らずに公開しないため)
+
+# 個人射撃データ (実 SCATT セッションの軌跡、git 追跡不要)
 video/public/data/*.json
