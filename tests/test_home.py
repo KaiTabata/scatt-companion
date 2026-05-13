@@ -31,7 +31,7 @@ def test_should_show_first_launch(tmp_path, monkeypatch):
     """home/seen=False なら auto モードで表示する。"""
     s, pm = _seeded_profile_manager(tmp_path, monkeypatch)
     s.set("home/show_on_startup", "auto")
-    assert HOME.should_show(s, pm) is True
+    assert HOME.should_auto_focus(s, pm) is True
 
 
 def test_should_show_seen_single_profile(tmp_path, monkeypatch):
@@ -39,7 +39,7 @@ def test_should_show_seen_single_profile(tmp_path, monkeypatch):
     s, pm = _seeded_profile_manager(tmp_path, monkeypatch)
     s.set("home/show_on_startup", "auto")
     s.set("home/seen", True)
-    assert HOME.should_show(s, pm) is False
+    assert HOME.should_auto_focus(s, pm) is False
 
 
 def test_should_show_multiple_profiles(tmp_path, monkeypatch):
@@ -48,14 +48,14 @@ def test_should_show_multiple_profiles(tmp_path, monkeypatch):
     s.set("home/show_on_startup", "auto")
     s.set("home/seen", True)
     pm.add("Alice")
-    assert HOME.should_show(s, pm) is True
+    assert HOME.should_auto_focus(s, pm) is True
 
 
 def test_mode_always(tmp_path, monkeypatch):
     s, pm = _seeded_profile_manager(tmp_path, monkeypatch)
     s.set("home/show_on_startup", "always")
     s.set("home/seen", True)
-    assert HOME.should_show(s, pm) is True
+    assert HOME.should_auto_focus(s, pm) is True
 
 
 def test_mode_never(tmp_path, monkeypatch):
@@ -65,7 +65,7 @@ def test_mode_never(tmp_path, monkeypatch):
     pm.add("Alice")
     pm.add("Bob")
     # never は何があっても表示しない
-    assert HOME.should_show(s, pm) is False
+    assert HOME.should_auto_focus(s, pm) is False
 
 
 def test_fetch_recent_no_db(tmp_path):

@@ -1374,7 +1374,8 @@ class DashboardTab(QWidget):
         self.hero_cards: list = []  # [(widget, val_lbl, unit_lbl, sub_lbl, key), ...]
         # ミニターゲット
         self.mini_target = TargetTab()
-        self.mini_target.setFixedSize(220, 220)
+        self.mini_target.setMinimumSize(200, 200)
+        # 上限なし: ウィンドウサイズに応じて拡大可
         # hero_row の中身は _rebuild_hero_row() で構築
         self._hero_row_layout = QHBoxLayout(self._hero_row_widget)
         self._hero_row_layout.setSpacing(8)
@@ -1435,7 +1436,7 @@ class DashboardTab(QWidget):
             "   font-size: 12px; line-height: 1.5; }"
         )
         self.feedback_label.setMinimumHeight(70)
-        self.feedback_label.setMaximumHeight(140)
+        # 上限を撤廃 — 所見が長くてもスクロールせず全文見える
         outer.addWidget(self.feedback_label)
 
         # ----- 下段: 選択可能グラフ枠 (rows × cols は設定で可変) -----
@@ -2003,7 +2004,7 @@ class SeriesTargetView(QGraphicsView):
         self.setScene(self._scene)
         self.setBackgroundBrush(QBrush(C.BG))
         self.setFrameShape(QGraphicsView.Shape.NoFrame)
-        self.setFixedSize(220, 220)
+        self.setMinimumSize(200, 200)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._draw_target()
@@ -5139,7 +5140,12 @@ class MainWindow(QMainWindow):
         self.tabs.setUsesScrollButtons(True)
         self.tabs.setElideMode(Qt.TextElideMode.ElideNone)
         self.tabs.setDocumentMode(True)
-        # 表示する tab を SETTINGS から (アイコンつき)
+        # ホームタブ (常に先頭)
+        self.home_tab = HOME.HomeTab(PROFILES, T, SETTINGS, db_path)
+        self.home_tab.start_clicked.connect(self._on_home_start)
+        self.home_tab.session_jump.connect(self._on_home_session_jump)
+        self.tabs.addTab(self.home_tab, "ホーム")
+        # 表示する tab を SETTINGS から
         tab_defs = [
             ("dashboard", self.dashboard, "Dashboard"),
             ("sessions",  self.sessions_tab, "Sessions"),
@@ -5569,6 +5575,29 @@ class MainWindow(QMainWindow):
             if PROFILES.delete(target.id, remove_db_file=remove_file):
                 self._refresh_profile_selector()
                 self._reload_after_profile_switch()
+
+    def _on_home_start(self, profile_id: str, discipline_key: str):
+        """ホームタブの「始める」 → Dashboard に切り替えて反映。"""
+        # profile / discipline は HomeTab 内で SETTINGS / PROFILES に反映済み
+        # ToolBar の selector を再描画
+        self._refresh_profile_selector()
+        # discipline 変更が target geometry に影響するが再起動を要さず再描画は限界あり
+        # → minimum で session のキャッシュを捨てる
+        self._session_cache.clear()
+        self._reload_after_profile_switch()
+        # Dashboard へ移動
+        for i in range(self.tabs.count()):
+            if self.tabs.widget(i) is self.dashboard:
+                self.tabs.setCurrentIndex(i)
+                break
+
+    def _on_home_session_jump(self, sid: int):
+        """ホームの最近セッション行ダブルクリック → そのセッションへ。"""
+        self._on_home_start(PROFILES.current_id(), T.current_key())
+        try:
+            self.set_session(sid)
+        except Exception as e:
+            LOG.warn(f"home session jump failed: {e}")
 
     def _reload_after_profile_switch(self):
         """profile 切替後にキャッシュを捨てて UI を更新。"""
@@ -6035,15 +6064,16 @@ def main():
     pal.setColor(QPalette.ColorRole.ButtonText, C.FG)
     app.setPalette(pal)
 
-    # ホーム画面 (条件付き)。返り値: None=スキップ, 0=「始める」のみ, int=特定 session 選択
-    jump_sid = HOME.show_if_needed(None, PROFILES, T, SETTINGS, args.db)
-
     w = MainWindow(args.db, auto_live=auto_live, initial_trace=args.trace)
     if on_top:
         w.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
     w.show()
-    if isinstance(jump_sid, int) and jump_sid > 0:
-        w.set_session(jump_sid)
+    # ホームタブを自動フォーカス (条件付き) — 初回起動 or 複数 profile
+    if HOME.should_auto_focus(SETTINGS, PROFILES):
+        for i in range(w.tabs.count()):
+            if w.tabs.widget(i) is w.home_tab:
+                w.tabs.setCurrentIndex(i)
+                break
     sys.exit(app.exec())
 
 

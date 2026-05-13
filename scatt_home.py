@@ -1,15 +1,13 @@
-"""起動時ホーム画面 (Welcome ダイアログ)。
+"""ホーム画面 (Welcome タブ)。
 
-射手 (Profile) と 射撃種目 (Discipline) を最初に確定し、
-最近のセッション + 週/月ダイジェストを見せて本画面へ。
+射手 (Profile) と 射撃種目 (Discipline) を確認・切替、
+最近のセッション + 週/月ダイジェストを表示する MainWindow 内のタブ。
 
-表示条件 (`home/show_on_startup` = "auto" の場合):
-  - 初回起動 (home/seen が False)
-  - profile が 2 つ以上
-  - "always" の場合は常に表示
-  - "never" の場合は出さない
-
-scatt_gui.main() から show_if_needed() を呼ぶ。
+シグナル:
+  start_clicked(profile_id: str, discipline_key: str)
+    「始める」ボタンが押されたとき
+  session_jump(sid: int)
+    「最近のセッション」行をダブルクリックされたとき
 """
 
 from __future__ import annotations
@@ -18,12 +16,12 @@ import datetime
 import sqlite3
 from typing import Optional
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QHeaderView,
+    QCheckBox, QComboBox, QFrame, QHBoxLayout, QHeaderView,
     QInputDialog, QLabel, QPushButton, QTableWidget, QTableWidgetItem,
-    QVBoxLayout,
+    QVBoxLayout, QWidget,
 )
 
 POSITION_NAMES = {0: "prone", 1: "standing", 2: "kneeling", 3: "other"}
@@ -38,11 +36,8 @@ def _ms_to_dt(ms: Optional[int]) -> Optional[datetime.datetime]:
         return None
 
 
-def fetch_recent_sessions(db_path: str, limit: int = 5) -> list[dict]:
-    """SCATT storage.dat から最近のセッションを集計。
-
-    各行: {sid, dt, position, n_shots, ten_a_mean (or None), r95_mean}
-    """
+def fetch_recent_sessions(db_path: str, limit: int = 10) -> list[dict]:
+    """SCATT storage.dat から最近のセッションを集計。"""
     out: list[dict] = []
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2.0)
@@ -70,11 +65,7 @@ def fetch_recent_sessions(db_path: str, limit: int = 5) -> list[dict]:
 
 
 def fetch_digest(db_path: str) -> dict:
-    """今週・今月の集計を返す。
-
-    返り値: {"week": {sessions, shots}, "month": {sessions, shots}}
-    SCATT 側に 10a/R95 は集計値として保存されていないので、本数のみ。
-    """
+    """今週・今月の集計を返す。"""
     now = datetime.datetime.now()
     week_start = (now - datetime.timedelta(days=7)).timestamp() * 1000
     month_start = (now - datetime.timedelta(days=30)).timestamp() * 1000
@@ -107,8 +98,8 @@ def fetch_digest(db_path: str) -> dict:
     return result
 
 
-def should_show(settings, profiles_mgr) -> bool:
-    """auto モードの判定。"""
+def should_auto_focus(settings, profiles_mgr) -> bool:
+    """起動時にホームタブをフォーカスするかの判定 (auto モード)。"""
     mode = settings.get("home/show_on_startup") or "auto"
     if mode == "always":
         return True
@@ -122,47 +113,46 @@ def should_show(settings, profiles_mgr) -> bool:
     return False
 
 
-class HomeScreen(QDialog):
-    """射手・種目を選び、最近のセッション + ダイジェストを見せる。
+class HomeTab(QWidget):
+    """ホーム画面 (タブとして MainWindow に埋め込み)。
 
-    accept() 後に self.selected_profile_id / self.selected_discipline_key が決まる。
-    self.dont_show_again が True なら呼び出し側で home/show_on_startup="never" に。
+    Dialog ではなく通常のタブ。MainWindow が tabs.addTab(HomeTab(...), "ホーム")
+    する。「始める」で start_clicked、行ダブルクリックで session_jump。
     """
 
-    def __init__(self, parent, profiles_mgr, discipline_mod, settings, db_path: str):
+    start_clicked = pyqtSignal(str, str)  # (profile_id, discipline_key)
+    session_jump = pyqtSignal(int)
+
+    def __init__(self, profiles_mgr, discipline_mod, settings, db_path: str,
+                 parent=None):
         super().__init__(parent)
         self.profiles_mgr = profiles_mgr
         self.T = discipline_mod
         self.settings = settings
         self.db_path = db_path
-        self.selected_profile_id = profiles_mgr.current_id()
-        self.selected_discipline_key = discipline_mod.current_key()
-        self.selected_session_id: Optional[int] = None
-        self.dont_show_again = False
         self._recent_rows: list[dict] = []
         self._build()
 
     # ---- UI ----
 
     def _build(self):
-        self.setWindowTitle("SCATT Prone Analyzer")
-        self.setMinimumWidth(640)
-        v = QVBoxLayout(self)
-        v.setContentsMargins(28, 24, 28, 20)
-        v.setSpacing(14)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(40, 32, 40, 28)
+        outer.setSpacing(16)
 
         # タイトル
         title = QLabel("SCATT Prone Analyzer")
-        f = QFont(); f.setPointSize(20); f.setBold(True)
+        f = QFont(); f.setPointSize(22); f.setBold(True)
         title.setFont(f)
-        v.addWidget(title)
+        outer.addWidget(title)
         sub = QLabel("今日の準備 — 射手と種目を選んで始めましょう")
         sub.setStyleSheet("color: #666; font-size: 13px;")
-        v.addWidget(sub)
-        v.addSpacing(6)
+        outer.addWidget(sub)
+        outer.addSpacing(8)
 
-        # 射手 + 種目
+        # 射手 + 種目を 2 列で並べる
         row = QHBoxLayout()
+        row.setSpacing(24)
         # 射手
         profile_col = QVBoxLayout()
         plbl = QLabel("射手")
@@ -170,18 +160,13 @@ class HomeScreen(QDialog):
         profile_col.addWidget(plbl)
         pbox = QHBoxLayout()
         self.profile_combo = QComboBox()
-        for p in self.profiles_mgr.list_profiles():
-            self.profile_combo.addItem(p.name, p.id)
-        idx = self.profile_combo.findData(self.selected_profile_id)
-        if idx >= 0:
-            self.profile_combo.setCurrentIndex(idx)
+        self._fill_profile_combo()
         pbox.addWidget(self.profile_combo, 1)
         new_btn = QPushButton("+ 新規")
         new_btn.clicked.connect(self._on_new_profile)
         pbox.addWidget(new_btn)
         profile_col.addLayout(pbox)
         row.addLayout(profile_col, 1)
-        row.addSpacing(20)
         # 種目
         disc_col = QVBoxLayout()
         dlbl = QLabel("射撃種目")
@@ -190,64 +175,63 @@ class HomeScreen(QDialog):
         self.disc_combo = QComboBox()
         for k, d in self.T.DISCIPLINES.items():
             self.disc_combo.addItem(d.label, k)
-        idx = self.disc_combo.findData(self.selected_discipline_key)
+        idx = self.disc_combo.findData(self.T.current_key())
         if idx >= 0:
             self.disc_combo.setCurrentIndex(idx)
         disc_col.addWidget(self.disc_combo)
         row.addLayout(disc_col, 1)
-        v.addLayout(row)
+        outer.addLayout(row)
 
-        # 区切り
-        v.addWidget(self._hline())
+        outer.addWidget(self._hline())
 
         # 最近のセッション
         rec_lbl = QLabel("最近のセッション  (ダブルクリックでそのセッションへ)")
         rec_lbl.setStyleSheet("font-weight: bold; font-size: 12px;")
-        v.addWidget(rec_lbl)
+        outer.addWidget(rec_lbl)
         self.recent_table = QTableWidget()
         self.recent_table.doubleClicked.connect(self._on_recent_double_clicked)
         self.recent_table.setColumnCount(3)
         self.recent_table.setHorizontalHeaderLabels(["日時", "姿勢", "shots"])
         self.recent_table.verticalHeader().setVisible(False)
         self.recent_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.recent_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.recent_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.recent_table.setShowGrid(False)
-        self.recent_table.setMaximumHeight(150)
         hh = self.recent_table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        v.addWidget(self.recent_table)
+        outer.addWidget(self.recent_table, stretch=1)
         self._fill_recent()
 
+        outer.addWidget(self._hline())
+
         # ダイジェスト
-        v.addWidget(self._hline())
         dig_lbl = QLabel("ダイジェスト")
         dig_lbl.setStyleSheet("font-weight: bold; font-size: 12px;")
-        v.addWidget(dig_lbl)
+        outer.addWidget(dig_lbl)
         self.digest_label = QLabel("…")
-        self.digest_label.setStyleSheet("color: #444; font-size: 13px;")
-        v.addWidget(self.digest_label)
+        self.digest_label.setStyleSheet("color: #444; font-size: 14px; padding: 4px 0;")
+        self.digest_label.setWordWrap(True)
+        outer.addWidget(self.digest_label)
         self._fill_digest()
 
-        v.addSpacing(8)
+        outer.addSpacing(12)
 
         # フッタ
-        self.cb_dont_show = QCheckBox("次回からこの画面を表示しない")
-        v.addWidget(self.cb_dont_show)
-
         btn_row = QHBoxLayout()
+        refresh_btn = QPushButton("更新")
+        refresh_btn.clicked.connect(self.refresh)
+        btn_row.addWidget(refresh_btn)
         btn_row.addStretch()
-        skip_btn = QPushButton("スキップ")
-        skip_btn.clicked.connect(self.reject)
-        btn_row.addWidget(skip_btn)
-        start_btn = QPushButton("始める")
-        f2 = QFont(); f2.setBold(True)
+        start_btn = QPushButton("始める →")
+        f2 = QFont(); f2.setBold(True); f2.setPointSize(14)
         start_btn.setFont(f2)
+        start_btn.setMinimumHeight(40)
+        start_btn.setMinimumWidth(160)
         start_btn.setDefault(True)
         start_btn.clicked.connect(self._on_start)
         btn_row.addWidget(start_btn)
-        v.addLayout(btn_row)
+        outer.addLayout(btn_row)
 
     def _hline(self) -> QFrame:
         line = QFrame()
@@ -256,8 +240,19 @@ class HomeScreen(QDialog):
         line.setStyleSheet("color: #ddd;")
         return line
 
+    def _fill_profile_combo(self):
+        cur_id = self.profiles_mgr.current_id()
+        self.profile_combo.blockSignals(True)
+        self.profile_combo.clear()
+        for p in self.profiles_mgr.list_profiles():
+            self.profile_combo.addItem(p.name, p.id)
+        idx = self.profile_combo.findData(cur_id)
+        if idx >= 0:
+            self.profile_combo.setCurrentIndex(idx)
+        self.profile_combo.blockSignals(False)
+
     def _fill_recent(self):
-        rows = fetch_recent_sessions(self.db_path, limit=5)
+        rows = fetch_recent_sessions(self.db_path, limit=10)
         self._recent_rows = rows
         self.recent_table.setRowCount(len(rows) or 1)
         if not rows:
@@ -272,15 +267,6 @@ class HomeScreen(QDialog):
             self.recent_table.setItem(r_i, 1, QTableWidgetItem(r["position"]))
             self.recent_table.setItem(r_i, 2, QTableWidgetItem(str(r["n_shots"])))
 
-    def _on_recent_double_clicked(self, index):
-        r = index.row()
-        if 0 <= r < len(self._recent_rows):
-            self.selected_session_id = self._recent_rows[r]["sid"]
-            self.selected_profile_id = self.profile_combo.currentData()
-            self.selected_discipline_key = self.disc_combo.currentData()
-            self.dont_show_again = self.cb_dont_show.isChecked()
-            self.accept()
-
     def _fill_digest(self):
         d = fetch_digest(self.db_path)
         w = d["week"]; m = d["month"]
@@ -290,6 +276,14 @@ class HomeScreen(QDialog):
             f"今月 (過去 30 日): <b>{m['sessions']}</b> セッション, "
             f"<b>{m['shots']}</b> shots"
         )
+
+    # ---- 公開 API ----
+
+    def refresh(self):
+        """外部から呼ばれて UI を再描画 (profile 追加後等)。"""
+        self._fill_profile_combo()
+        self._fill_recent()
+        self._fill_digest()
 
     # ---- アクション ----
 
@@ -303,33 +297,27 @@ class HomeScreen(QDialog):
         if idx >= 0:
             self.profile_combo.setCurrentIndex(idx)
 
+    def _on_recent_double_clicked(self, index):
+        r = index.row()
+        if 0 <= r < len(self._recent_rows):
+            sid = self._recent_rows[r]["sid"]
+            # 「始める」相当の確定処理も同時に
+            self._apply_selection()
+            self.session_jump.emit(sid)
+
     def _on_start(self):
-        self.selected_profile_id = self.profile_combo.currentData()
-        self.selected_discipline_key = self.disc_combo.currentData()
-        self.dont_show_again = self.cb_dont_show.isChecked()
-        self.accept()
+        self._apply_selection()
+        prof_id = self.profile_combo.currentData() or self.profiles_mgr.current_id()
+        disc_key = self.disc_combo.currentData() or self.T.current_key()
+        self.start_clicked.emit(prof_id, disc_key)
 
-
-def show_if_needed(parent, profiles_mgr, discipline_mod, settings, db_path: str) -> Optional[int]:
-    """条件を満たすときだけ表示。
-
-    返り値:
-      None  → 表示しなかった / スキップされた
-      int   → ユーザが選んだ session_id (ジャンプ先)
-      0     → 「始める」されたが特定 session の選択なし
-
-    accept された場合は profile・discipline を実際に切替、Settings に反映する。
-    """
-    if not should_show(settings, profiles_mgr):
-        return None
-    dlg = HomeScreen(parent, profiles_mgr, discipline_mod, settings, db_path)
-    if dlg.exec() != QDialog.DialogCode.Accepted:
-        return None
-    profiles_mgr.set_current(dlg.selected_profile_id)
-    if dlg.selected_discipline_key != discipline_mod.current_key():
-        settings.set("discipline", dlg.selected_discipline_key)
-        discipline_mod.set_current(dlg.selected_discipline_key)
-    settings.set("home/seen", True)
-    if dlg.dont_show_again:
-        settings.set("home/show_on_startup", "never")
-    return dlg.selected_session_id if dlg.selected_session_id is not None else 0
+    def _apply_selection(self):
+        """profile と discipline の選択を実反映。"""
+        pid = self.profile_combo.currentData()
+        if pid and pid != self.profiles_mgr.current_id():
+            self.profiles_mgr.set_current(pid)
+        dk = self.disc_combo.currentData()
+        if dk and dk != self.T.current_key():
+            self.settings.set("discipline", dk)
+            self.T.set_current(dk)
+        self.settings.set("home/seen", True)
