@@ -3,6 +3,18 @@
 すべての変更点は [Keep a Changelog](https://keepachangelog.com/) 形式に倣う。
 バージョニングは [Semantic Versioning](https://semver.org/) ベース。
 
+## [0.4.9] — 2026-05-15
+
+### Added
+- **アプリ内 自動アップデート機能** (`scatt_auto_update.py`)
+  - 起動 5 秒後に `docs/manifest.json` (GitHub Pages) を fetch して新版を検知
+  - ダイアログ「今すぐ更新 / 後で / このバージョンをスキップ」
+  - 「今すぐ更新」→ 進捗バー付きで DMG ダウンロード → installer シェルスクリプトを spawn (親 PID 終了待ち) → /Applications/ の旧 .app を新版に置き換え → quarantine 解除 → 新版を起動
+  - Python 直起動 (開発実行) では自動更新スキップ
+  - Settings の「自動更新を確認」(デフォルト ON) / 「更新確認 URL」(デフォルトで配布 manifest を指定) / 「このバージョンをスキップ」記憶
+
+> 0.4.8 までは自動更新機能なし。0.4.8 → 0.4.9 への移行は最後の手動アップデートが必要 (DMG を再ダウンロード)、0.4.9 以降のリリースからは自動更新で届く。
+
 ## [0.4.8] — 2026-05-15
 
 ### Fixed

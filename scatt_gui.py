@@ -30,14 +30,14 @@ import zlib
 import numpy as np
 import pyqtgraph as pg
 import collections
-from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal, QRectF, QSettings, QByteArray
+from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal, QRectF, QSettings, QByteArray, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPalette, QPen
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFormLayout,
     QFrame, QGraphicsPathItem, QGraphicsScene, QGraphicsView, QHBoxLayout,
     QHeaderView, QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox,
-    QPushButton, QScrollArea, QSpinBox, QSplitter, QStatusBar,
+    QProgressDialog, QPushButton, QScrollArea, QSpinBox, QSplitter, QStatusBar,
     QStyledItemDelegate, QTableWidget, QTableWidgetItem, QTabWidget,
     QTextBrowser, QToolBar, QVBoxLayout, QGridLayout, QWidget,
 )
@@ -54,6 +54,7 @@ import scatt_logging as LOG
 import scatt_backup as BK
 import scatt_target as T
 import scatt_update as UPD
+import scatt_auto_update as AUTOUPD
 import scatt_profile as PR
 import scatt_home as HOME
 import scatt_paths as PATHS
@@ -62,7 +63,7 @@ import scatt_modes as MODES
 import scatt_i18n as I18N
 from scatt_i18n import t as _t
 
-VERSION = "0.4.8"
+VERSION = "0.4.9"
 
 
 DEFAULT_DB = PATHS.DEFAULT_SCATT_STORAGE
@@ -137,8 +138,11 @@ class S:
         # rifle_50m (default) | rifle_10m | pistol_10m
         "discipline": "rifle_50m",
         # 更新通知 (公開 manifest URL を取得して比較)
-        "update/manifest_url": "",
-        "update/auto_check": False,
+        # デフォルトは scatt-analyzer GitHub Pages の manifest を指す
+        "update/manifest_url": AUTOUPD.DEFAULT_MANIFEST_URL,
+        "update/auto_check": True,
+        # ユーザーが「このバージョンをスキップ」を選んだ場合、その latest_version をここに記録
+        "update/skip_version": "",
         # 射手 Profile
         "profiles/list": "",          # JSON string: [{id, name, db}, ...]
         "profiles/current": "default",
@@ -6402,6 +6406,8 @@ class MainWindow(QMainWindow):
         # 心拍自動接続
         if SETTINGS.get("heart/auto_start") and SETTINGS.get("heart/mode") != "off":
             self._toggle_hr()
+        # 自動更新チェック (起動 5 秒後にバックグラウンド)
+        QTimer.singleShot(5000, self._check_for_update_auto)
 
     # ----- キーボードショートカット ハンドラ -----
 
@@ -7174,6 +7180,89 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"session summary exported: {n} sessions → {path}")
         except Exception as e:
             QMessageBox.critical(self, "失敗", str(e))
+
+    # ----- 自動更新 -----
+
+    def _check_for_update_auto(self):
+        if not SETTINGS.get("update/auto_check"):
+            return
+        if not AUTOUPD.is_bundle_app():
+            return
+        url = (SETTINGS.get("update/manifest_url") or "").strip()
+        if not url:
+            return
+        self._upd_checker = AUTOUPD.UpdateChecker(VERSION, url, self)
+        self._upd_checker.update_available.connect(self._on_update_available)
+        self._upd_checker.error.connect(lambda msg: print(f"[auto-update] {msg}"))
+        self._upd_checker.start()
+
+    def _on_update_available(self, latest: str, url: str, notes: str):
+        if SETTINGS.get("update/skip_version") == latest:
+            return
+        dlg = QMessageBox(self)
+        dlg.setWindowTitle("更新が利用可能")
+        dlg.setIcon(QMessageBox.Icon.Information)
+        dlg.setText(f"<b>SCATT Companion v{latest}</b> が利用可能です。")
+        if notes:
+            dlg.setInformativeText(notes)
+        btn_now = dlg.addButton("今すぐ更新", QMessageBox.ButtonRole.AcceptRole)
+        btn_later = dlg.addButton("後で", QMessageBox.ButtonRole.RejectRole)
+        btn_skip = dlg.addButton("このバージョンをスキップ", QMessageBox.ButtonRole.ActionRole)
+        dlg.exec()
+        clicked = dlg.clickedButton()
+        if clicked == btn_now:
+            self._start_update_download(url, latest)
+        elif clicked == btn_skip:
+            SETTINGS.set("update/skip_version", latest)
+
+    def _start_update_download(self, url: str, version: str):
+        self._upd_progress = QProgressDialog(
+            f"v{version} の DMG をダウンロード中...", "キャンセル", 0, 100, self
+        )
+        self._upd_progress.setWindowTitle("アップデートをダウンロード")
+        self._upd_progress.setMinimumDuration(0)
+        self._upd_progress.setAutoClose(False)
+        self._upd_progress.setAutoReset(False)
+        self._upd_progress.setValue(0)
+
+        self._upd_dl = AUTOUPD.Downloader(url, self)
+
+        def _on_progress(received: int, total: int):
+            if total > 0:
+                self._upd_progress.setValue(int(received / total * 100))
+                mb_r = received / (1024 * 1024)
+                mb_t = total / (1024 * 1024)
+                self._upd_progress.setLabelText(
+                    f"v{version} の DMG をダウンロード中... ({mb_r:.1f} / {mb_t:.1f} MB)"
+                )
+            else:
+                mb_r = received / (1024 * 1024)
+                self._upd_progress.setLabelText(
+                    f"v{version} の DMG をダウンロード中... ({mb_r:.1f} MB)"
+                )
+
+        def _on_error(msg: str):
+            self._upd_progress.close()
+            QMessageBox.warning(self, "アップデート",
+                                f"ダウンロードに失敗しました:\n{msg}")
+
+        self._upd_dl.progress.connect(_on_progress)
+        self._upd_dl.done.connect(self._on_download_done)
+        self._upd_dl.error.connect(_on_error)
+        self._upd_progress.canceled.connect(self._upd_dl.cancel)
+        self._upd_dl.start()
+
+    def _on_download_done(self, local_path: str):
+        try:
+            self._upd_progress.close()
+        except Exception:
+            pass
+        QMessageBox.information(
+            self, "アップデート",
+            "ダウンロードが完了しました。アプリを再起動して新版に切り替えます。",
+        )
+        AUTOUPD.install_and_relaunch(local_path)
+        QApplication.instance().quit()
 
     def closeEvent(self, e):
         try:

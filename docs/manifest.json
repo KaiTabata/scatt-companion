@@ -1,5 +1,5 @@
 {
-  "latest_version": "0.4.8",
-  "url": "https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.8/scatt-companion-0.4.8.dmg",
-  "notes": "v0.4.8 — 起動直後のハング (resizeEvent 無限ループ) 修正 / 種目別グラフ閾値 / shot scatter にターゲットリング / S1 非表示化 / ダークモード削除 / Makefile py2app ビルド修正"
+  "latest_version": "0.4.9",
+  "url": "https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.9/scatt-companion-0.4.9.dmg",
+  "notes": "v0.4.9 — アプリ内自動アップデート機能を追加。次回以降のリリースは「今すぐ更新」ボタンで自動適用されます。"
 }
