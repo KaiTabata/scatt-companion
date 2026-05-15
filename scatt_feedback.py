@@ -83,21 +83,21 @@ def _describe_bad(key: str, val: float, z: float) -> Optional[str]:
     if key == "hold_s":
         return f"最終ホールド時間が{sev}短く {val:.2f}s でした。"
     if key == "tremor":
-        return f"力み (8-12Hz) が{sev}大きく {val:.4f} でした。"
+        return f"高周波帯 (8-12Hz) パワーが{sev}大きく {val:.4f} でした。"
     if key == "breath":
-        return f"呼吸帯のパワーが{sev}大きく {val:.3f} (息止め失敗の兆候) でした。"
+        return f"低周波帯 (0.2-0.5Hz) パワーが{sev}大きく {val:.3f} でした。"
     if key == "heart_band":
-        return f"心拍由来のゆれが{sev}大きく {val:.3f} でした。"
+        return f"心拍帯 (1-2Hz) パワーが{sev}大きく {val:.3f} でした。"
     if key == "total_power":
-        return f"サイト全体のゆれが{sev}大きく {val:.3f} でした。"
+        return f"スペクトル総パワーが{sev}大きく {val:.3f} でした。"
     if key == "approach_signs":
-        return f"狙い直しの振動が{sev}多く {val:.1f} 回/秒 でした。"
+        return f"狙い直し回数が{sev}多く {val:.1f} 回/秒 でした。"
     if key == "approach_mono":
         return f"approach 単調率が{sev}低く {val:.2f} でした。"
     if key == "hr_at_fire":
         return f"発射時 HR が{sev}高く {val:.0f} bpm でした。"
     if key == "rmssd_30s":
-        return f"HRV (RMSSD) が{sev}低く {val:.0f}ms (緊張・疲労の兆候) でした。"
+        return f"HRV (RMSSD) が{sev}低く {val:.0f}ms でした。"
     if key == "recoil_peak":
         return f"反動 peak が{sev}大きく {val:.1f}mm でした。"
     if key == "recoil_settle":
@@ -110,52 +110,26 @@ def _describe_bad(key: str, val: float, z: float) -> Optional[str]:
 def _describe_good(key: str, val: float, z: float) -> Optional[str]:
     """普段より良い指標を 1 文で表現。"""
     if key == "timing_v":
-        return f"撃発タイミング {val:.0f}mm/s は普段より良く、止まって撃てています。"
+        return f"撃発タイミング {val:.0f}mm/s は普段より小さい。"
     if key == "r95_05":
-        return f"S2 {val:.2f}mm は普段より良く、最終ホールドが安定。"
+        return f"S2 (最終 0.5s) {val:.2f}mm は普段より小さい。"
     if key == "r95_1":
-        return f"S1 {val:.2f}mm は普段より良いです。"
+        return f"S1 (最終 1s) {val:.2f}mm は普段より小さい。"
     if key == "ten_a_1s":
-        return f"10a {val:.0f}% は普段より高く、10 リングへ長く留まれています。"
+        return f"10a {val:.0f}% は普段より高い。"
     if key == "hold_s":
-        return f"最終ホールド {val:.2f}s は普段より長く、止めの時間が確保できています。"
+        return f"最終ホールド {val:.2f}s は普段より長い。"
     if key == "cant_sd_deg":
-        return f"発射前の cant 変動が普段より小さく ({val:.2f}°)、姿勢が一貫しています。"
+        return f"発射前 0.5s の cant 変動 σ={val:.2f}° は普段より小さい。"
     if key == "tremor":
-        return f"力み (8-12Hz) が普段より少なく ({val:.4f})、落ち着いた撃発でした。"
+        return f"高周波帯 (8-12Hz) パワー {val:.4f} は普段より小さい。"
     if key == "breath":
-        return f"呼吸の影響が少なく ({val:.3f})、息止めが効いています。"
+        return f"低周波帯 (0.2-0.5Hz) パワー {val:.3f} は普段より小さい。"
     if key == "recoil_peak":
-        return f"反動 peak {val:.1f}mm は普段より小さく、銃の保持が良好。"
+        return f"反動 peak {val:.1f}mm は普段より小さい。"
     if key == "rmssd_30s":
-        return f"HRV {val:.0f}ms は普段より高く、リラックスできていました。"
+        return f"HRV (RMSSD) {val:.0f}ms は普段より高い。"
     return None
-
-
-def _improvement_tip(key: str) -> Optional[str]:
-    """改善ヒント (各指標が悪いときに添えるアドバイス)。"""
-    tips = {
-        "timing_v":         "→ ヒント: タイミングが速い時は、追加で 0.3 秒待つ意識を。",
-        "r95_05":           "→ ヒント: 最終 0.5s が散る時は息止めのタイミングを揃え、姿勢の最終固定を見直し。",
-        "r95_1":            "→ ヒント: 最終 1s が散る時は approach phase を短くせず、ゆっくり中心に収束させる。",
-        "ten_a_1s":         "→ ヒント: 10a が低いのは approach が不安定。狙い直しを減らす。",
-        "ten_a_05s":        "→ ヒント: 10a-0.5 が低い時は最終ホールドが弱い。引きの判断を遅らせる。",
-        "cant_at_fire_deg": "→ ヒント: cant が普段と違う時はグリップやストックの当て方を再確認。",
-        "cant_sd_deg":      "→ ヒント: 狙い中の肩の力みや銃の保持を見直し。",
-        "hold_s":           "→ ヒント: 最終ホールドが短い。発射判断を 0.3〜0.5 秒遅らせる練習を。",
-        "tremor":           "→ ヒント: 力みが大きい時は呼吸前のリラックス、脱力を意識。",
-        "breath":           "→ ヒント: 呼吸の影響が出ている。完全息止めまたは半呼気の習慣化。",
-        "heart_band":       "→ ヒント: 心拍由来のゆれは避けられないが、撃発タイミングを心拍の合間に置く意識を。",
-        "total_power":      "→ ヒント: サイト全体のゆれが大きい。姿勢の固定、グリップの安定を見直し。",
-        "approach_signs":   "→ ヒント: 狙い直しを減らす。最初の狙いで決める意識。",
-        "approach_mono":    "→ ヒント: approach をまっすぐ収束させる練習を。",
-        "hr_at_fire":       "→ ヒント: HR が高い時はリラックス、呼吸でクールダウン。",
-        "rmssd_30s":        "→ ヒント: HRV 低下は疲労・緊張の兆候。1 分間の深呼吸で持ち直し。",
-        "recoil_peak":      "→ ヒント: 反動が大きい時はトリガープルでの引き込み、保持の緩みを確認。",
-        "recoil_settle":    "→ ヒント: 復元が遅い時は銃の保持力と肩への当て方を見直し。",
-        "recoil_post05_r95": "→ ヒント: フォロースルーがぶれている。発射後 1 秒は構えを維持。",
-    }
-    return tips.get(key)
 
 
 def shot_feedback(cur_metrics: dict, session_stats: dict, *, min_z: float = 1.0) -> str:
@@ -208,12 +182,6 @@ def shot_feedback(cur_metrics: dict, session_stats: dict, *, min_z: float = 1.0)
     if not sentences:
         sentences.append("今回の shot は全体的に普段通りでした。")
 
-    # 一番悪い指標についてヒント (z >= 1.5 のみ)
-    if bad_sorted and bad_sorted[0][1] >= 1.5:
-        tip = _improvement_tip(bad_sorted[0][0])
-        if tip:
-            sentences.append(tip)
-
     return "\n".join(sentences)
 
 
@@ -254,64 +222,68 @@ def session_feedback(session_shots: list[dict]) -> str:
     sentences: list[str] = []
     sentences.append(f"このセッションでは {n} shot を撃ちました。")
 
-    # S2 (最終 0.5s) 評価
+    # S2 (最終 0.5s) 平均
     if s2_vals:
         mu_s2 = float(np.mean(s2_vals))
-        if mu_s2 < 2:
-            sentences.append(f"S2 平均 {mu_s2:.2f}mm — 上級者レベルの安定したホールド。")
-        elif mu_s2 < 4:
-            sentences.append(f"S2 平均 {mu_s2:.2f}mm — 標準的。最後の止めを 0.2 秒長くする余地。")
-        else:
-            sentences.append(f"S2 平均 {mu_s2:.2f}mm — 最終ホールドが散らばっています。呼吸停止と姿勢固定を見直し。")
+        sd_s2 = float(np.std(s2_vals))
+        sentences.append(f"S2 平均 {mu_s2:.2f}mm (σ={sd_s2:.2f}mm)。")
 
-    # 10a 評価
+    # S1 (最終 1s) 平均
+    if s1_vals:
+        mu_s1 = float(np.mean(s1_vals))
+        sd_s1 = float(np.std(s1_vals))
+        sentences.append(f"S1 平均 {mu_s1:.2f}mm (σ={sd_s1:.2f}mm)。")
+
+    # 10a 平均
     if ten_a_vals:
         mu_ten = float(np.mean(ten_a_vals))
-        if mu_ten >= 70:
-            sentences.append(f"10a 平均 {mu_ten:.0f}% — 10-ring 滞在時間 良好。")
-        elif mu_ten >= 30:
-            sentences.append(f"10a 平均 {mu_ten:.0f}% — 標準。approach の安定を伸ばす余地。")
-        else:
-            sentences.append(f"10a 平均 {mu_ten:.0f}% — 10-ring に長く留まれていません。狙いの収束に課題。")
+        sentences.append(f"10a 平均 {mu_ten:.0f}%。")
+    if ten_a05_vals:
+        mu_ten05 = float(np.mean(ten_a05_vals))
+        sentences.append(f"10a-0.5 平均 {mu_ten05:.0f}%。")
 
     # Cant ばらつき
     if cant_vals and len(cant_vals) >= 3:
         sd = float(np.std(cant_vals))
-        if sd < 0.5:
-            sentences.append(f"Cant ばらつき σ={sd:.2f}° — 銃の保持が一貫しています。")
-        elif sd > 1.5:
-            sentences.append(f"Cant ばらつき σ={sd:.2f}° — shot 間で cant が変動。グリップを統一すべき。")
+        mu_c = float(np.mean(cant_vals))
+        sentences.append(f"撃発時 cant 平均 {mu_c:+.2f}° (σ={sd:.2f}°)。")
 
-    # 前半 vs 後半トレンド
+    # ホールド時間
+    if hold_vals:
+        mu_h = float(np.mean(hold_vals))
+        sentences.append(f"最終ホールド平均 {mu_h:.2f}s。")
+
+    # 前半 vs 後半トレンド (差分のみ提示、解釈は付けない)
     if len(s2_vals) >= 6:
         half = len(s2_vals) // 2
         first = float(np.mean(s2_vals[:half]))
         second = float(np.mean(s2_vals[half:]))
         diff = second - first
-        if diff > 0.5:
-            sentences.append(f"後半 S2 が +{diff:.2f}mm 悪化 — 疲労や集中切れの兆候。休憩を挟むか練習量を見直し。")
-        elif diff < -0.5:
-            sentences.append(f"後半 S2 が {diff:.2f}mm 改善 — 体が温まってきた。前半のアップを充実させると更に良い。")
+        if abs(diff) > 0.3:
+            sign = "+" if diff > 0 else ""
+            sentences.append(f"S2 前半→後半 {sign}{diff:.2f}mm (前半 {first:.2f} → 後半 {second:.2f})。")
 
     if len(peak_vals) >= 6:
         half = len(peak_vals) // 2
         f = float(np.mean(peak_vals[:half]))
         s = float(np.mean(peak_vals[half:]))
-        if s - f > 5:
-            sentences.append(f"後半に反動 peak が +{s-f:.1f}mm 増加 — 銃の保持が緩んでいる可能性。")
+        if abs(s - f) > 3:
+            sign = "+" if s > f else ""
+            sentences.append(f"反動 peak 前半→後半 {sign}{s-f:.1f}mm (前半 {f:.1f} → 後半 {s:.1f})。")
 
-    # 心拍トレンド
+    # 心拍
     if len(hr_vals) >= 5:
         mu_hr = float(np.mean(hr_vals))
         sd_hr = float(np.std(hr_vals))
-        if sd_hr > 8:
-            sentences.append(f"心拍ばらつき σ={sd_hr:.0f} bpm — shot 間の状態差が大きい。呼吸・リズム統一を意識。")
-        elif mu_hr > 90:
-            sentences.append(f"発射時平均 HR {mu_hr:.0f} bpm — やや高め。リラックスのルーティンを。")
+        sentences.append(f"発射時 HR 平均 {mu_hr:.0f} bpm (σ={sd_hr:.0f})。")
 
-    # ベスト shot 抽出
+    # ベスト / ワースト shot (事実だけ)
     if s2_vals:
         idx_best = int(np.argmin(s2_vals))
-        sentences.append(f"ベスト shot は #{idx_best + 1} (S2={s2_vals[idx_best]:.2f}mm) — その時の感覚を再現。")
+        idx_worst = int(np.argmax(s2_vals))
+        sentences.append(
+            f"ベスト #{idx_best + 1} (S2={s2_vals[idx_best]:.2f}mm) / "
+            f"ワースト #{idx_worst + 1} (S2={s2_vals[idx_worst]:.2f}mm)。"
+        )
 
     return "\n".join(sentences)

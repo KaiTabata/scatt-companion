@@ -30,8 +30,8 @@ OPTIONS = {
         "CFBundleName": APP_NAME,
         "CFBundleDisplayName": APP_NAME,
         "CFBundleIdentifier": "com.scatt-companion.app",
-        "CFBundleVersion": "0.4.0",
-        "CFBundleShortVersionString": "0.4.0",
+        "CFBundleVersion": "0.4.8",
+        "CFBundleShortVersionString": "0.4.8",
         "NSHumanReadableCopyright": "Apache License 2.0",
         # macOS 権限の説明
         "NSBluetoothAlwaysUsageDescription":
@@ -50,6 +50,7 @@ OPTIONS = {
         "scatt_storage",
         "scatt_feedback",
         "scatt_watch",
+        "scatt_i18n",
         "bleak",
         "collections",
         "sqlite3",
@@ -73,5 +74,4 @@ setup(
     name=APP_NAME,
     data_files=DATA_FILES,
     options={"py2app": OPTIONS},
-    setup_requires=["py2app"],
 )

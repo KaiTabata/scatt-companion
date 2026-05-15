@@ -62,15 +62,21 @@ ble-scan:
 # ----- 配布 (.app) -----
 app: app-clean icon
 	$(PYTHON) -m pip install --user py2app
-	$(PYTHON) setup_app.py py2app
+	@# pyproject.toml の [project].dependencies を setuptools が install_requires に
+	@# 変換しようとし、py2app が "install_requires is no longer supported" で落ちる。
+	@# ビルド中だけ pyproject.toml を退避する (trap で確実に戻す)。
+	@trap 'test -f pyproject.toml.bak && mv pyproject.toml.bak pyproject.toml' EXIT INT TERM; \
+	    mv pyproject.toml pyproject.toml.bak && \
+	    $(PYTHON) setup_app.py py2app
 	@echo ""
 	@echo "Build complete: dist/SCATT Companion.app"
 	@echo "ad-hoc 署名する場合: make app-sign"
-	@echo "DMG にする場合: hdiutil create -volname 'SCATT Companion' \\"
-	@echo "  -srcfolder 'dist/SCATT Companion.app' -ov -format UDZO dist/scatt-companion.dmg"
+	@echo "DMG にする場合: make dmg"
 
 app-sign:
-	@codesign --force --deep --sign - "dist/SCATT Companion.app"
+	@# ad-hoc 署名では一部の dylib (liblzma 等) が strict validation 警告で
+	@# exit 1 を返すが、署名自体は完了し動作には影響しない。警告は許容する。
+	@codesign --force --deep --sign - "dist/SCATT Companion.app" 2>&1 | grep -v "failed strict validation" || true
 	@echo "ad-hoc signed."
 
 # 自分の Mac の /Applications/ に上書きインストール

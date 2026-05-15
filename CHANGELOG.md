@@ -3,6 +3,51 @@
 すべての変更点は [Keep a Changelog](https://keepachangelog.com/) 形式に倣う。
 バージョニングは [Semantic Versioning](https://semver.org/) ベース。
 
+## [0.4.8] — 2026-05-15
+
+### Fixed
+- **アプリ起動直後のハング (UI 無限ループ) を修正** (`scatt_gui.py`)
+  - `TargetTab.resizeEvent` 内の `fitInView` 呼び出しがスクロールバー表示判定を変え、resize イベントが再帰発火する問題を再入ロックで防止
+  - 起動後 20 秒以上応答しなくなる症状に対応
+
+### Changed
+- **ダークモードを完全削除** (使用しない方針に統一)
+- **速度時系列グラフの閾値を種目別化**: 50m = 15/60 mm/s、10m AR/AP = 3/10 mm/s
+- **shot scatter にターゲットリングを薄く重ね描画** (データ範囲に合わせ自動スケール)
+- **SCATT 互換 S1 を非表示化**: 本家計算式の完全特定ができていないため、誤差のある値の表示を停止 (代わりに `r95_1` を既定 KPI に)
+- **discipline-aware 色判定**: 種目ごとの R95 妥当範囲に応じた良/悪判定
+- **cant=0 検出**: 銃身傾斜 (Z) が 0 のデータを未取得扱いとし、cant 系指標から除外
+- **所見コメントの軽微修正** + 個人データ表記の整理
+
+### Build / Distribution
+- **Makefile `app` ターゲットで pyproject.toml を一時退避**: setuptools が `[project].dependencies` を `install_requires` に変換 → py2app が `error: install_requires is no longer supported` で落ちる問題を回避 (trap で確実に復元)
+- **`app-sign` で codesign の strict validation 警告を許容**: ad-hoc 署名で `liblzma.5.dylib` 警告が出ても署名は完了 → make が止まらないよう調整
+- **紹介動画を実 SCATT データ + アニメーションへ刷新** + BGM (合成シネマティック ambient) 追加・autoplay 化
+- **配布: GitHub Release v0.4.8 に DMG (約 260MB) を添付**
+
+> v0.4.1 → v0.4.8 へのマイナー番号ジャンプは、間のスクショ更新・紹介サイト拡充・動画刷新・個人データ表記整理など複数のマイクロ修正を一括リリースとしてまとめたため。
+
+## [0.4.1] — 2026-05-13
+
+### Added
+- **国際化 (i18n)**: 日本語 / 英語 切替 (`scatt_i18n.py`)
+  - Settings → General に「表示言語」コンボ。変更は次回起動時に反映
+  - タブラベル / About ダイアログを翻訳化
+
+### Changed
+- **所見コメントを観察事実のみに刷新** (`scatt_feedback.py`)
+  - 技術前提 (「息止め失敗の兆候」「息止めが効いている」「銃の保持が良好」「グリップ統一」など) を全削除
+  - 指導・処方系の文 (「〜を見直し」「〜を意識」「ルーティンを」) も削除
+  - 心理推測 (「緊張・疲労」「リラックスできていました」) も削除
+  - shot / session feedback は数値・単位・偏差だけ。解釈はシューター本人の領域に
+  - 末尾の「→ ヒント:」アドバイス行を撤去
+- **最小ウィンドウサイズを 420×380 まで縮小** (SCATT 本家の横に並べられる)
+  - 各タブを `QScrollArea` でラップして縮小可能に
+  - 画面幅 < 700px で左 shot 一覧を自動折り畳み、戻すと自動復元
+  - `session_selector` 最小幅 280→100、`profile_selector` 120→80
+  - `mini_target` 最小 200→140、`feedback_label` の最低高さ撤廃
+  - 初回起動サイズも `availableGeometry × 0.92` で控えめに
+
 ## [0.4.0] — 2026-05-13
 
 ### 名称変更

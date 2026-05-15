@@ -59,8 +59,10 @@ import scatt_home as HOME
 import scatt_paths as PATHS
 import scatt_metric_docs as DOCS
 import scatt_modes as MODES
+import scatt_i18n as I18N
+from scatt_i18n import t as _t
 
-VERSION = "0.4.0"
+VERSION = "0.4.8"
 
 
 DEFAULT_DB = PATHS.DEFAULT_SCATT_STORAGE
@@ -107,11 +109,11 @@ class S:
         "layout/show_mini_target": True,
         "layout/show_metrics_table": True,
         "layout/show_feedback": True,
-        "layout/show_graphs": True,
+        "layout/show_graphs": False,  # グラフ専用タブに移行したのでデフォルト OFF
         # 主役 KPI 4 枠の内訳 (METRICS の key を指定)
         "layout/hero_kpi_1": "ten_a_1s",
         "layout/hero_kpi_2": "ten_a_05s",
-        "layout/hero_kpi_3": "s1_mm_s",
+        "layout/hero_kpi_3": "r95_1",
         "layout/hero_kpi_4": "r95_05",
         # tabs visibility
         "tabs/dashboard": True,
@@ -123,6 +125,10 @@ class S:
         "tabs/drift": True,
         "tabs/target": True,
         "tabs/help": True,
+        "tabs/graphs": True,
+        # グラフ専用タブ
+        "layout/graphs_tab_rows": 2,
+        "layout/graphs_tab_cols": 3,
         # heart
         "heart/mode": "off",            # off | ble | mock
         "heart/device_address": "",     # 空 = 自動スキャン
@@ -141,6 +147,8 @@ class S:
         "home/seen": False,
         # モード (prone / ar / hold_practice)
         "mode": "prone",
+        # 表示言語 (ja | en)
+        "ui/language": "ja",
     }
 
     def __init__(self):
@@ -179,6 +187,8 @@ class S:
 
 
 SETTINGS = S()
+# 表示言語を適用 (ja | en) — 以降の _t() 呼び出しに反映される
+I18N.set_language(SETTINGS.get("ui/language") or "ja")
 # 起動時に射撃種目を適用 (50m ライフル / 10m エアライフル / 10m エアピストル)
 T.set_current(SETTINGS.get("discipline") or "rifle_50m")
 # モード (prone / ar / hold_practice) を適用
@@ -304,6 +314,23 @@ def delete_shots(db_path: str, shot_ids: list[int]) -> dict:
 
 
 POSITION_NAMES = {0: "伏射", 1: "立射", 2: "膝射", 3: "他"}
+
+
+def _disc_from_session_meta(meta: dict) -> str | None:
+    """セッションの distance / caliber から discipline key を推定。
+
+    現状: 10m / 50m を distance で振り分け。10m は caliber 4.5mm を AR とみなす。
+    判定不能なら None を返す。
+    """
+    dist = meta.get("distance")
+    cal = meta.get("caliber")
+    if dist is None:
+        return None
+    if dist <= 10.5:
+        # 10m: AR / AP の区別は SCATT 内部に position が残らないので caliber 主体。
+        # 現状ユーザは AR メインなので AR 既定、明らかにピストル系のときだけ pistol_10m。
+        return "rifle_10m"
+    return "rifle_50m"
 
 
 def detect_discipline_label(dist, cal, position):
@@ -578,7 +605,9 @@ METRICS = [
     # ----- SCATT 互換 (本家と同じ略号・単位、計算式も完全一致) -----
     ("ten_a_1s",         "10a",                          "%",    "high_good",    1),
     ("ten_a_05s",        "10a-0.5",                      "%",    "high_good",    1),
-    ("s1_mm_s",          "S1",                           "mm/s", "low_good",     1),
+    # SCATT 本家 S1 (mm/s) は外部実機データで 6 shot 中 3 shot が一致するが、
+    # 残り 3 shot は ±1-2mm/s ずれる。本家の正確な計算ロジック (フィルタや端点処理)
+    # が不明なため、誤解を避けて非表示にした。代わりに r95_1 (mm 単位) を出す。
     # S2 (本家): 単位 mm/s / 窓 250ms と判明しているが、計算式の細部
     # (静止区間検出など) が本家バイナリの逆解析待ちのため非表示。
     ("ten_b_1s",         "10b",                          "%",    "high_good",    1),
@@ -755,10 +784,52 @@ def _empty_message(pw, msg: str):
     txt.setPos(0, 0)
 
 
+def _draw_target_rings(pw, disc, data_max_r: float | None = None):
+    """scatter プロット上に種目別ターゲットリングを薄く描画。
+
+    データ範囲 + 1 リング分まで自動で描画 (外周まで広げると点群が圧縮されるため)。
+    """
+    import math
+    r10 = disc.ring_10_radius_mm
+    r9 = disc.ring_9_radius_mm
+    ring_step = disc.ring_step_mm / 2.0  # 半径ステップ
+    # 描画範囲を決める: データ最大 r + 1 リング 余白、または最低 8 リングまで
+    if data_max_r is None or data_max_r <= 0:
+        max_r = r9 + ring_step * 2  # デフォルトは 7 リングまで
+    else:
+        max_r = max(r9 + ring_step, data_max_r + ring_step)
+    # リング一覧 (10 → 1)
+    ring_radii = [r10] + [r10 + i * ring_step for i in range(1, 11)]
+    pen_main = pg.mkPen(C.FG_MUTED, width=0.8, style=Qt.PenStyle.DotLine)
+    theta = np.linspace(0, 2 * math.pi, 64)
+    cos_t, sin_t = np.cos(theta), np.sin(theta)
+    for i, r in enumerate(ring_radii):
+        if r > max_r * 1.05:
+            break
+        ring_num = 10 - i  # i=0:10, i=1:9, ...
+        if ring_num < 1:
+            break
+        xs = r * cos_t
+        ys = r * sin_t
+        pw.plot(xs, ys, pen=pen_main)
+        # ラベルは外側に
+        if ring_num >= 5:
+            txt = pg.TextItem(str(ring_num), color=_color_hex(C.FG_MUTED), anchor=(0.5, 0.5))
+            txt.setPos(0, r)
+            pw.addItem(txt)
+
+
 def _gr_velocity(pw, t_arr, samples, sr, sessshots):
     pw.clear()
+    # 種目に応じて閾値を変える (50m と AR/AP では妥当な範囲が違う)
+    disc_key = T.current_key()
+    if disc_key == "rifle_50m":
+        thr_lo, thr_hi = 15.0, 60.0
+    else:  # rifle_10m / pistol_10m
+        thr_lo, thr_hi = 3.0, 10.0
+    y_max = 200.0  # 反動 peak も画面内に収まるよう余裕を取る
     _setup_plot(pw,
-                title="速度時系列  (発射=0 · 緑:狙い · 赤:反動 · 点線:15/60mm/s)",
+                title=f"速度時系列  (発射=0 · 緑:狙い · 赤:反動 · 点線:{thr_lo:.0f}/{thr_hi:.0f}mm/s)",
                 x_label="発射からの時間", x_unit="s",
                 y_label="速度", y_unit="mm/s")
     v = A.velocity(t_arr)
@@ -768,10 +839,10 @@ def _gr_velocity(pw, t_arr, samples, sr, sessshots):
     t_axis = (np.arange(len(v)) + 0.5) / sr
     if t_arr.trace_offset is not None:
         t_axis -= t_arr.trace_offset / sr
-    # 発射ライン(0) と閾値線 (15 / 60 mm/s)
+    # 発射ライン(0) と閾値線 (種目別)
     pw.addLine(x=0, pen=pg.mkPen(C.ACCENT_Y, width=1.5, style=Qt.PenStyle.DashLine))
-    pw.addLine(y=15, pen=pg.mkPen(C.ACCENT_G, width=0.6, style=Qt.PenStyle.DotLine))
-    pw.addLine(y=60, pen=pg.mkPen(C.ACCENT_O, width=0.6, style=Qt.PenStyle.DotLine))
+    pw.addLine(y=thr_lo, pen=pg.mkPen(C.ACCENT_G, width=0.6, style=Qt.PenStyle.DotLine))
+    pw.addLine(y=thr_hi, pen=pg.mkPen(C.ACCENT_O, width=0.6, style=Qt.PenStyle.DotLine))
     # データ (緑=狙い、赤=反動)
     if t_arr.trace_offset is not None and 0 < t_arr.trace_offset < len(v):
         pw.plot(t_axis[:t_arr.trace_offset], v[:t_arr.trace_offset],
@@ -780,6 +851,12 @@ def _gr_velocity(pw, t_arr, samples, sr, sessshots):
                 pen=pg.mkPen(C.ACCENT_R, width=1.4))
     else:
         pw.plot(t_axis, v, pen=pg.mkPen(C.ACCENT_G, width=1.8))
+    # Y 軸上限を妥当な値に (自動 range が広がりすぎないよう)
+    try:
+        v_peak = float(np.max(v))
+        pw.setYRange(0, min(y_max, max(v_peak * 1.15, thr_hi * 1.5)))
+    except Exception:
+        pass
 
 
 def _gr_r95_bars(pw, t_arr, samples, sr, sessshots):
@@ -837,6 +914,9 @@ def _gr_shot_scatter(pw, t_arr, samples, sr, sessshots):
     # SCATT 座標は y が下向き正 → pyqtgraph (y上向き) では反転
     xs = np.array([s["fire_x"] for s in valid])
     ys = -np.array([s["fire_y"] for s in valid])
+    # 種目別ターゲットリング (データ範囲に合わせる)
+    max_r = float(np.max(np.hypot(xs, ys))) if len(xs) > 0 else None
+    _draw_target_rings(pw, T.current(), data_max_r=max_r)
     n = len(valid)
     for i, (xi, yi) in enumerate(zip(xs, ys)):
         f = i / max(1, n - 1)
@@ -1421,6 +1501,12 @@ class GraphPanel(QWidget):
         kind = self.combo.currentData()
         for k, _, fn in GRAPH_KINDS:
             if k == kind:
+                # グラフ切替時にデータに合うよう autoRange を有効化 (描画関数が
+                # 明示的に setYRange しなければ pyqtgraph が自動 fit する)
+                try:
+                    self.plot.getViewBox().enableAutoRange(axis='xy', enable=True)
+                except Exception:
+                    pass
                 fn(self.plot, *self._last_args)
                 return
 
@@ -1444,6 +1530,7 @@ class DashboardTab(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(10, 10, 10, 10)
         outer.setSpacing(8)
+        self._outer = outer  # _apply_mode_visibility で stretch 変更に使う
 
         # ----- 最上段: 「今の一発」即時診断 (Live 中の主役) -----
         self.live_diag_label = QLabel("")
@@ -1464,7 +1551,8 @@ class DashboardTab(QWidget):
         self.hero_cards: list = []  # [(widget, val_lbl, unit_lbl, sub_lbl, key), ...]
         # ミニターゲット
         self.mini_target = TargetTab()
-        self.mini_target.setMinimumSize(200, 200)
+        # 最小サイズだけ確保 (1.5x 旧 = 225)。上限は QGraphicsView の sizeHint に任せる
+        self.mini_target.setMinimumSize(225, 225)
         # 上限なし: ウィンドウサイズに応じて拡大可
         # hero_row の中身は _rebuild_hero_row() で構築
         self._hero_row_layout = QHBoxLayout(self._hero_row_widget)
@@ -1498,7 +1586,7 @@ class DashboardTab(QWidget):
         tbl.setColumnWidth(2, 110)
         tbl.setColumnWidth(3, 90)
         for r in range(n_metrics):
-            tbl.setRowHeight(r, 26)
+            tbl.setRowHeight(r, 20)
         self.metrics_table = tbl
         # 行作成
         for row, (key, label, unit, _, _) in enumerate(METRICS):
@@ -1525,8 +1613,7 @@ class DashboardTab(QWidget):
             f"  border: 1px solid {hex_of(C.BORDER)}; padding: 8px 12px;"
             "   font-size: 12px; line-height: 1.5; }"
         )
-        self.feedback_label.setMinimumHeight(70)
-        # 上限を撤廃 — 所見が長くてもスクロールせず全文見える
+        # 最低高さを撤廃 — 小画面では内容にフィット、所見が長ければ伸びる
         outer.addWidget(self.feedback_label)
 
         # ----- 下段: 選択可能グラフ枠 (rows × cols は設定で可変) -----
@@ -1617,15 +1704,17 @@ class DashboardTab(QWidget):
             self.live_diag_label.setVisible(False)
 
     def _apply_mode_visibility(self):
-        """現在モードの hide_target_metrics に従い、target 系指標行を隠す/出す。"""
-        hide = MODES.current().hide_target_metrics
+        """現在モードに従い表示要素を切替える。
+
+        - hide_target_metrics (hold_practice): ターゲット精度指標行を隠す
+        """
+        mode = MODES.current()
+        hide = mode.hide_target_metrics
         target_keys = {"ten_a_1s", "ten_a_05s", "ten_b_1s", "ten_b_05s",
                        "nine_c_1s", "r95_1", "r95_05", "r95_2", "r95_3"}
-        # metrics_table はまだ作られていない場合がある (init 順序)
         if hasattr(self, "metrics_table"):
             for row, (key, _, _, _, _) in enumerate(METRICS):
                 self.metrics_table.setRowHidden(row, hide and key in target_keys)
-        # mini_target もホールド練習モードでは非表示
         if hasattr(self, "mini_target"):
             if hide:
                 self.mini_target.setVisible(False)
@@ -1685,9 +1774,9 @@ class DashboardTab(QWidget):
                     sub = lay.takeAt(0)
                     if sub.widget():
                         sub.widget().setParent(None)
-        # 再追加
+        # 再追加: ウィンドウ幅に応じて mini_target が伸びる (KPI と程よい比率)
         self._hero_row_layout.addLayout(kpi_grid, stretch=3)
-        self._hero_row_layout.addWidget(self.mini_target, stretch=0)
+        self._hero_row_layout.addWidget(self.mini_target, stretch=2)
         # 可視性 (モードのフラグも考慮)
         self._apply_mode_visibility()
 
@@ -1902,8 +1991,14 @@ class DashboardTab(QWidget):
         self._update_live_diag(cur_metrics)
 
         # --- 4 枠グラフを更新 ---
-        for g in self.graphs:
-            g.update_data(t_arr, samples, sample_rate, session_shots or [])
+        # graphs widget が非表示なら描画スキップ (Live polling 中の重い再描画を回避)
+        if self._graphs_widget.isVisible():
+            for g in self.graphs:
+                g.update_data(t_arr, samples, sample_rate, session_shots or [])
+        else:
+            # 非表示中はデータだけキャッシュし、再表示時に redraw できるよう保持
+            for g in self.graphs:
+                g._last_args = (t_arr, samples, sample_rate, session_shots or [])
 
     def _on_metrics_context_menu(self, pos):
         """指標表で右クリック → 当該行の計算式ダイアログ。"""
@@ -2164,6 +2259,25 @@ class SeriesTargetView(QGraphicsView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._draw_target()
         self._dyn = []
+        self._in_resize = False
+
+    def _recreate_target(self):
+        """discipline 切替時に scene をクリアして新しい寸法で描き直す。"""
+        d = T.current()
+        self.OUTER_DIAM_MM = d.outer_diam_mm
+        self.RING_STEP_MM = d.ring_step_mm
+        self.BLACK_DIAM_MM = d.black_diam_mm
+        self.INNER_TEN_DIAM_MM = d.inner_ten_diam_mm
+        self._scene.clear()
+        self._dyn = []
+        self._draw_target()
+        if T.current_key() == "rifle_50m":
+            r = self.OUTER_DIAM_MM / 2.0 * 1.23
+        else:
+            r10 = d.ring_10_radius_mm
+            step = d.ring_step_mm / 2.0
+            r = (r10 + 4 * step) * 1.5
+        self.fitInView(-r, -r, 2 * r, 2 * r, Qt.AspectRatioMode.KeepAspectRatio)
 
     def _draw_target(self):
         # 簡略版: 黒地のみ、リング線、Inner 10
@@ -2251,9 +2365,15 @@ class SeriesTargetView(QGraphicsView):
                 ))
 
     def resizeEvent(self, e):
-        r = self.OUTER_DIAM_MM / 2.0 * 1.23
-        self.fitInView(QRectF(-r, -r, 2 * r, 2 * r), Qt.AspectRatioMode.KeepAspectRatio)
         super().resizeEvent(e)
+        if self._in_resize:
+            return
+        self._in_resize = True
+        try:
+            r = self.BLACK_DIAM_MM / 2.0 * 1.15
+            self.fitInView(QRectF(-r, -r, 2 * r, 2 * r), Qt.AspectRatioMode.KeepAspectRatio)
+        finally:
+            self._in_resize = False
 
 
 class SeriesPanel(QWidget):
@@ -2984,6 +3104,10 @@ class DriftTab(QWidget):
         self.scatter_plot.clear()
         self.scatter_plot.addLine(x=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
         self.scatter_plot.addLine(y=0, pen=pg.mkPen(C.FG_MUTED, width=0.5))
+        # 種目別ターゲットリングをオーバーレイ (データ範囲に合わせる)
+        max_r = float(np.max(np.hypot(np.asarray([s["fire_x"] for s in valid]),
+                                       np.asarray([s["fire_y"] for s in valid]))))
+        _draw_target_rings(self.scatter_plot, T.current(), data_max_r=max_r)
         n = len(valid)
         # 色: 古→新 を 青→緑→黄→赤 で遷移
         colors = []
@@ -3082,8 +3206,8 @@ def _gr_best_vs_worst(pw, t_arr, samples, sr, sessshots):
         return ((s.get("summary") or {}).get("hold") or {}).get("hold_s")
 
     metrics = [
-        ("S2", s2_v, 1),
-        ("S1", s1_v, 1),
+        ("R95 0.5s", s2_v, 1),
+        ("R95 1s", s1_v, 1),
         ("|Cant|", lambda s: abs(cant_v(s)) if cant_v(s) is not None else None, 1),
         ("撃発タイミング", timing_v, 0.3),
         ("静止時間×10", lambda s: (hold_v(s) or 0) * 10, 1),
@@ -3354,11 +3478,11 @@ def _scatter_corr(pw, sessshots, key_x: str, key_y: str,
 
 
 def _gr_s1_vs_fire_r(pw, t_arr, samples, sr, sessshots):
-    """S1 (照準速度) と 着弾分布距離 fire_r の相関 — AR で重要。"""
-    _scatter_corr(pw, sessshots, "s1_mm_s", "fire_r",
-                  "S1 vs 着弾点距離  (速度↓ で命中↑ なら効果実証)",
-                  "S1 直前1秒の速度", "中心からの距離",
-                  "mm/s", "mm")
+    """R95 (直前1秒) と 着弾分布距離 fire_r の相関 — 安定 → 命中の検証。"""
+    _scatter_corr(pw, sessshots, "r95_1", "fire_r",
+                  "R95 直前1秒 vs 着弾点距離  (安定↓ で命中↑ なら効果実証)",
+                  "R95 直前1秒", "中心からの距離",
+                  "mm", "mm")
 
 def _gr_centroid_vs_ten_a(pw, t_arr, samples, sr, sessshots):
     """重心 R95 (銃の安定度) と 10a-0.5 (圏内時間) の相関。"""
@@ -3368,11 +3492,11 @@ def _gr_centroid_vs_ten_a(pw, t_arr, samples, sr, sessshots):
                   "mm", "%")
 
 def _gr_s1_vs_holdtime(pw, t_arr, samples, sr, sessshots):
-    """S1 と ホールド時間の相関 — 「粘れてないと速い」現象を可視化。"""
-    _scatter_corr(pw, sessshots, "s1_mm_s", "hold_s",
-                  "S1 vs ホールド時間",
-                  "S1", "ホールド時間",
-                  "mm/s", "秒")
+    """R95 直前1秒 と ホールド時間の相関 — 「粘れてないと散らす」現象を可視化。"""
+    _scatter_corr(pw, sessshots, "r95_1", "hold_s",
+                  "R95 直前1秒 vs ホールド時間",
+                  "R95 直前1秒", "ホールド時間",
+                  "mm", "秒")
 
 def _gr_followthrough_vs_ten_a(pw, t_arr, samples, sr, sessshots):
     """フォロースルー比 vs 10a-0.5。"""
@@ -3382,17 +3506,17 @@ def _gr_followthrough_vs_ten_a(pw, t_arr, samples, sr, sessshots):
                   "", "%")
 
 def _gr_s1_history_ar(pw, t_arr, samples, sr, sessshots):
-    """shot 順 S1 推移 — AR でのセッション内の調子の波を見る。"""
+    """shot 順 R95 直前1秒 推移 — セッション内の調子の波を見る。"""
     pw.clear()
-    _setup_plot(pw, title="S1 推移  (shot 順)",
+    _setup_plot(pw, title="R95 直前1秒 推移  (shot 順)",
                 x_label="shot 番号 (session 内)",
-                y_label="S1 直前1秒 平均速度", y_unit="mm/s")
+                y_label="R95 直前1秒", y_unit="mm")
     if not sessshots:
         _empty_message(pw, "shot がありません")
         return
     xs, ys = [], []
     for i, s in enumerate(sessshots):
-        v = _shot_metric(s, "s1_mm_s")
+        v = _shot_metric(s, "r95_1")
         if v is not None:
             xs.append(i + 1); ys.append(v)
     if not xs: return
@@ -3406,11 +3530,11 @@ def _gr_s1_history_ar(pw, t_arr, samples, sr, sessshots):
         pw.plot(ma_x, ma, pen=pg.mkPen(C.ACCENT_R, width=2))
 
 
-GRAPH_KINDS.append(("s1_vs_fire_r",         "S1 vs 着弾距離  (AR 相関)",   _gr_s1_vs_fire_r))
+GRAPH_KINDS.append(("s1_vs_fire_r",         "R95 直前1秒 vs 着弾距離",     _gr_s1_vs_fire_r))
 GRAPH_KINDS.append(("centroid_vs_ten_a",    "重心 R95 vs 10a-0.5",         _gr_centroid_vs_ten_a))
-GRAPH_KINDS.append(("s1_vs_holdtime",       "S1 vs ホールド時間",           _gr_s1_vs_holdtime))
+GRAPH_KINDS.append(("s1_vs_holdtime",       "R95 直前1秒 vs ホールド時間",  _gr_s1_vs_holdtime))
 GRAPH_KINDS.append(("followthrough_vs_ten_a", "発射前後 R95 比 vs 10a-0.5", _gr_followthrough_vs_ten_a))
-GRAPH_KINDS.append(("s1_history",           "S1 推移  (shot 順)",          _gr_s1_history_ar))
+GRAPH_KINDS.append(("s1_history",           "R95 直前1秒 推移  (shot 順)", _gr_s1_history_ar))
 
 
 class CantTab(QWidget):
@@ -3936,8 +4060,8 @@ class SessionDetailPanel(QWidget):
         kpi_row.setSpacing(6)
         self.kpi_10a   = _hero_card("10a μ (10-ring 1s)",   "%")
         self.kpi_10a5  = _hero_card("10a-0.5 μ",             "%")
-        self.kpi_s1    = _hero_card("S1 μ (1s stability)",   "mm")
-        self.kpi_s2    = _hero_card("S2 μ (0.5s stability)", "mm")
+        self.kpi_s1    = _hero_card("R95 1s μ",   "mm")
+        self.kpi_s2    = _hero_card("R95 0.5s μ", "mm")
         self.kpi_peak  = _hero_card("Recoil peak μ",         "mm")
         self.kpi_hr    = _hero_card("HR μ",                  "bpm")
         for k in [self.kpi_10a, self.kpi_10a5, self.kpi_s1, self.kpi_s2,
@@ -3952,32 +4076,17 @@ class SessionDetailPanel(QWidget):
         gg.setHorizontalSpacing(8)
         gg.setVerticalSpacing(8)
 
-        self.plot_scatter = pg.PlotWidget(title="Shot impact scatter")
-        self.plot_scatter.setLabel('left', 'Y', units='mm')
-        self.plot_scatter.setLabel('bottom', 'X', units='mm')
-        self.plot_scatter.setAspectLocked(True)
-        self.plot_scatter.showGrid(x=True, y=True, alpha=0.15)
-        gg.addWidget(self.plot_scatter, 0, 0)
-
-        self.plot_r95 = pg.PlotWidget(title="S1 / S2 per shot")
-        self.plot_r95.setLabel('left', 'mm')
-        self.plot_r95.setLabel('bottom', 'shot order')
-        self.plot_r95.showGrid(x=True, y=True, alpha=0.15)
-        gg.addWidget(self.plot_r95, 0, 1)
-
-        self.plot_10a = pg.PlotWidget(title="10a / 10a-0.5 per shot")
-        self.plot_10a.setLabel('left', '%')
-        self.plot_10a.setLabel('bottom', 'shot order')
-        self.plot_10a.showGrid(x=True, y=True, alpha=0.15)
-        gg.addWidget(self.plot_10a, 1, 0)
-
-        self.plot_recoil = pg.PlotWidget(title="Recoil peak amplitude per shot")
-        self.plot_recoil.setLabel('left', 'mm')
-        self.plot_recoil.setLabel('bottom', 'shot order')
-        self.plot_recoil.showGrid(x=True, y=True, alpha=0.15)
-        gg.addWidget(self.plot_recoil, 1, 1)
-
-        outer.addWidget(gw, stretch=1)
+        # Sessions Overview の 4 グラフ枠は廃止 — 専用「グラフ」タブに統合済み。
+        # ただし他コード (update_session 内) からの参照を壊さないよう Plot 自体は残す
+        # (sizeHint = 0 / 非表示で UI には出さない)
+        self.plot_scatter = pg.PlotWidget()
+        self.plot_r95 = pg.PlotWidget()
+        self.plot_10a = pg.PlotWidget()
+        self.plot_recoil = pg.PlotWidget()
+        for p in (self.plot_scatter, self.plot_r95, self.plot_10a, self.plot_recoil):
+            p.setVisible(False)
+        gw.setVisible(False)
+        outer.addWidget(gw, stretch=0)
 
         # サマリ文
         self.trend_label = QLabel("")
@@ -4128,10 +4237,10 @@ class SessionDetailPanel(QWidget):
         # トレンド (前半 vs 後半 比較 = 疲労 or 改善検出)
         trend_text = []
         for name, vals, low_better in [
-            ("10a",  ten_a_vals,  False),
-            ("S1",   s1_vals,     True),
-            ("S2",   s2_vals,     True),
-            ("Peak", peak_vals,   True),
+            ("10a",     ten_a_vals,  False),
+            ("R95 1s",  s1_vals,     True),
+            ("R95 0.5s",s2_vals,     True),
+            ("Peak",    peak_vals,   True),
         ]:
             if len(vals) >= 6:
                 half = len(vals) // 2
@@ -4321,11 +4430,11 @@ class SessionsTab(QWidget):
         self.sub_cant = CantTab()
         self.sub_drift = DriftTab()
         self.sub_spectrum = SpectrumTab()
-        self.sub_tabs.addTab(self.detail, "Overview")
-        self.sub_tabs.addTab(self.sub_recoil, "Recoil")
-        self.sub_tabs.addTab(self.sub_cant, "Cant")
-        self.sub_tabs.addTab(self.sub_drift, "Drift")
-        self.sub_tabs.addTab(self.sub_spectrum, "Spectrum")
+        self.sub_tabs.addTab(self.detail,       _t("subtab.overview"))
+        self.sub_tabs.addTab(self.sub_recoil,   _t("subtab.recoil"))
+        self.sub_tabs.addTab(self.sub_cant,     _t("subtab.cant"))
+        self.sub_tabs.addTab(self.sub_drift,    _t("subtab.drift"))
+        self.sub_tabs.addTab(self.sub_spectrum, _t("subtab.spectrum"))
         split.addWidget(self.sub_tabs)
         split.setSizes([180, 600])
 
@@ -4790,23 +4899,21 @@ def show_about_dialog(parent=None):
     """About ダイアログを表示。"""
     from PyQt6.QtWidgets import QMessageBox
     msg = QMessageBox(parent)
-    msg.setWindowTitle("About — SCATT Companion")
+    msg.setWindowTitle(_t("about.title"))
     msg.setIconPixmap(QApplication.instance().windowIcon().pixmap(64, 64))
     msg.setText(
         f"<b>SCATT Companion</b>  v{VERSION}<br>"
-        "伏射 / 立射対応の SCATT Expert 補助分析ツール"
+        f"{_t('about.subtitle')}"
     )
     msg.setInformativeText(
-        f"<p>SCATT Electronics の <b>公式ソフトではありません</b>。"
-        "SCATT が保存した自身の射撃データをローカルで読み取って解析する非公式ツールです。</p>"
-        f"<p><b>開発:</b> Kai Tabata + Claude Opus 4.7</p>"
-        f"<p><b>Repository:</b> "
+        f"<p>{_t('about.disclaimer')}</p>"
+        f"<p>{_t('about.developer')}</p>"
+        f"<p><b>{_t('about.repository')}:</b> "
         f"<a href='https://github.com/KaiTabata/scatt-analyzer'>github.com/KaiTabata/scatt-analyzer</a><br>"
-        f"<b>License:</b> Apache License 2.0<br>"
-        f"<b>ログ:</b> {LOG.LOG_FILE}<br>"
-        f"<b>データ:</b> ~/Library/Application Support/scatt-companion/extra.db</p>"
-        "<p style='font-size:90%;color:#666'>SCATT, SCATT Expert は SCATT Electronics の商標です。"
-        "本ソフトは公式ではない補助ツールであり、SCATT Electronics と関係ありません。</p>"
+        f"<b>{_t('about.license_label')}:</b> Apache License 2.0<br>"
+        f"<b>{_t('about.log_label')}:</b> {LOG.LOG_FILE}<br>"
+        f"<b>{_t('about.data_label')}:</b> ~/Library/Application Support/scatt-companion/extra.db</p>"
+        f"<p style='font-size:90%;color:#666'>{_t('about.trademark')}</p>"
     )
     msg.setTextFormat(Qt.TextFormat.RichText)
     msg.setStandardButtons(QMessageBox.StandardButton.Ok)
@@ -4837,6 +4944,19 @@ class SettingsTab(QWidget):
         v.addWidget(self._header("General  動作"))
         form_g = QFormLayout()
         form_g.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        # 表示言語 (ja / en)
+        self.cb_language = QComboBox()
+        self.cb_language.addItem(_t("settings.language.ja"), "ja")
+        self.cb_language.addItem(_t("settings.language.en"), "en")
+        cur_lang = SETTINGS.get("ui/language") or "ja"
+        idx = self.cb_language.findData(cur_lang)
+        if idx >= 0:
+            self.cb_language.setCurrentIndex(idx)
+        self.cb_language.setToolTip(
+            "UI 言語。変更は次回起動時に反映されます。"
+            " / Language. Changes take effect after restart."
+        )
+        form_g.addRow(_t("settings.language"), self.cb_language)
         self.cb_live = QCheckBox()
         self.cb_live.setChecked(SETTINGS.get("behavior/live_on_startup"))
         form_g.addRow("起動時に Live polling を開始", self.cb_live)
@@ -5262,6 +5382,12 @@ class SettingsTab(QWidget):
         return lbl
 
     def _on_apply(self):
+        # 表示言語 (再起動で反映)
+        new_lang = self.cb_language.currentData()
+        cur_lang = SETTINGS.get("ui/language") or "ja"
+        lang_changed = bool(new_lang) and new_lang != cur_lang
+        if lang_changed:
+            SETTINGS.set("ui/language", new_lang)
         # 動作
         SETTINGS.set("behavior/live_on_startup", self.cb_live.isChecked())
         SETTINGS.set("behavior/polling_interval_s", self.sp_polling.value())
@@ -5311,8 +5437,14 @@ class SettingsTab(QWidget):
         self.behavior_changed.emit()
         QMessageBox.information(
             self, "適用しました",
-            "設定を保存しました。\nタブの表示/非表示は次回起動時に反映されます。"
+            "設定を保存しました。\nタブの表示/非表示・表示言語は次回起動時に反映されます。"
         )
+        if lang_changed:
+            QMessageBox.information(
+                self,
+                _t("lang.restart_required.title"),
+                _t("lang.restart_required.body"),
+            )
 
     def _on_reset_window(self):
         SETTINGS.reset_window()
@@ -5320,6 +5452,63 @@ class SettingsTab(QWidget):
             self, "リセット予約",
             "次回起動時にウィンドウサイズがデフォルト (1400×900) に戻ります。"
         )
+
+
+class GraphsTab(QWidget):
+    """グラフ専用タブ — Dashboard と独立にグラフ N×M を大きく表示。
+
+    各枠は GraphPanel (combo で kind 切替) を使う。SETTINGS:
+      layout/graphs_tab_rows / layout/graphs_tab_cols
+      layout/graphs_tab_default_{1..9}
+    """
+
+    def __init__(self):
+        super().__init__()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(6, 6, 6, 6)
+        outer.setSpacing(6)
+        self._grid_widget = QWidget()
+        outer.addWidget(self._grid_widget, stretch=1)
+        self.graphs: list[GraphPanel] = []
+        rows = SETTINGS.get("layout/graphs_tab_rows") or 2
+        cols = SETTINGS.get("layout/graphs_tab_cols") or 3
+        self.rebuild(rows, cols)
+
+    def rebuild(self, rows: int, cols: int):
+        for g in self.graphs:
+            g.setParent(None); g.deleteLater()
+        self.graphs = []
+        gw = self._grid_widget
+        old_lay = gw.layout()
+        if old_lay is not None:
+            QWidget().setLayout(old_lay)
+        gg = QGridLayout(gw)
+        gg.setContentsMargins(0, 0, 0, 0)
+        gg.setHorizontalSpacing(8)
+        gg.setVerticalSpacing(8)
+        n = rows * cols
+        defaults_fallback = ["velocity", "scatter", "r95_history", "trace_xy",
+                             "spectrum", "cant_history", "timing_history",
+                             "hold_history", "r95_bars"]
+        for i in range(n):
+            kind = SETTINGS.get(f"layout/graphs_tab_default_{i+1}") or defaults_fallback[i % len(defaults_fallback)]
+            gp = GraphPanel(kind)
+            r = i // cols
+            c = i % cols
+            gg.addWidget(gp, r, c)
+            self.graphs.append(gp)
+
+    def update_trace(self, samples, shots, sample_rate, session_shots=None):
+        try:
+            t_arr = A.to_trace_arrays(samples, sample_rate,
+                                      shots[0]["trace_offset"] if shots else None)
+        except Exception:
+            return
+        for g in self.graphs:
+            try:
+                g.update_data(t_arr, samples, sample_rate, session_shots or [])
+            except Exception:
+                pass
 
 
 class HelpTab(QWidget):
@@ -5355,8 +5544,11 @@ class TargetTab(QGraphicsView):
         self.setScene(self._scene)
         self.setBackgroundBrush(QBrush(C.BG))
         self.setFrameShape(QGraphicsView.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._draw_target()
         self._dyn = []
+        self._in_resize = False
         # 再生用
         self._play_samples: list | None = None
         self._play_shots: list | None = None
@@ -5369,6 +5561,25 @@ class TargetTab(QGraphicsView):
         # コンテキストメニュー (右クリック)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu)
+
+    def _recreate_target(self):
+        """discipline 切替時に scene をクリアして新しい寸法で描き直す。"""
+        d = T.current()
+        self.OUTER_DIAM_MM = d.outer_diam_mm
+        self.RING_STEP_MM = d.ring_step_mm
+        self.BLACK_DIAM_MM = d.black_diam_mm
+        self.INNER_TEN_DIAM_MM = d.inner_ten_diam_mm
+        self._scene.clear()
+        self._dyn = []
+        self._draw_target()
+        # ビューを種目別の視野半径に合わせる (resizeEvent と同じロジック)
+        if T.current_key() == "rifle_50m":
+            r = self.OUTER_DIAM_MM / 2.0 * 1.23
+        else:
+            r10 = d.ring_10_radius_mm
+            step = d.ring_step_mm / 2.0
+            r = (r10 + 4 * step) * 1.5
+        self.fitInView(-r, -r, 2 * r, 2 * r, Qt.AspectRatioMode.KeepAspectRatio)
 
     def _draw_target(self):
         sc = self.OUTER_DIAM_MM / 154.4
@@ -5522,9 +5733,20 @@ class TargetTab(QGraphicsView):
         self.show_trace(partial, shots_partial)
 
     def resizeEvent(self, e):
-        r = self.OUTER_DIAM_MM / 2.0 * 1.23
-        self.fitInView(QRectF(-r, -r, 2 * r, 2 * r), Qt.AspectRatioMode.KeepAspectRatio)
         super().resizeEvent(e)
+        # fitInView は scrollbar の表示判定を変えて再帰的に resizeEvent を発火させ得るので再入防止
+        if self._in_resize:
+            return
+        self._in_resize = True
+        try:
+            # SCATT 本家準拠: 50m はターゲット全体、AR/AP は黒地中心 (種目別)
+            if T.current_key() == "rifle_50m":
+                r = self.OUTER_DIAM_MM / 2.0 * 1.05
+            else:
+                r = self.BLACK_DIAM_MM / 2.0 * 1.15
+            self.fitInView(QRectF(-r, -r, 2 * r, 2 * r), Qt.AspectRatioMode.KeepAspectRatio)
+        finally:
+            self._in_resize = False
 
 
 # ===========================================================================
@@ -5549,8 +5771,8 @@ class TwoShotCompareDialog(QDialog):
         keys = [
             ("ten_a_1s",  "10a",            "%",     1, False),
             ("ten_a_05s", "10a-0.5",        "%",     1, False),
-            ("s1_mm_s",   "S1",             "mm/s",  1, True),
-            ("r95_05",    "R95 0.5s",       "mm",    2, True),
+            ("r95_1",     "R95 直前1秒",    "mm",    2, True),
+            ("r95_05",    "R95 直前0.5秒",  "mm",    2, True),
             ("timing_v",  "撃発時 速度",    "mm/s",  1, True),
             ("hold_s",    "ホールド時間",   "秒",    2, False),
             ("tremor",    "力み",           "",      4, True),
@@ -5828,8 +6050,14 @@ class ShotListPanel(QListWidget):
         self.reload()
 
     def prepend_shot(self, shot_id: int, trace_id: int, timer_ms: int,
-                     match: bool, missed: bool, favorite: bool):
-        """新規 shot を先頭に。番号は現在表示数 + 1。"""
+                     match: bool, missed: bool, favorite: bool,
+                     session_id: int | None = None):
+        """新規 shot を先頭に。番号は現在表示数 + 1。
+
+        session_id を指定して、現セッションと違う場合はスキップ (混ざらない)。
+        """
+        if session_id is not None and self._session_id is not None and session_id != self._session_id:
+            return  # 別 session の shot は本パネルに混ぜない
         import datetime
         t_str = datetime.datetime.fromtimestamp(timer_ms / 1000).strftime("%m-%d %H:%M")
         tags = []
@@ -5862,7 +6090,7 @@ class MainWindow(QMainWindow):
     def __init__(self, db_path: str, auto_live: bool = True, initial_trace: int | None = None):
         super().__init__()
         self.db_path = db_path
-        self.setWindowTitle(f"SCATT prone analyzer — {os.path.basename(db_path)}")
+        self.setWindowTitle(f"SCATT Companion — {os.path.basename(db_path)}")
         # ウィンドウサイズを SETTINGS から復元
         geom = SETTINGS.get("window/geometry")
         if isinstance(geom, QByteArray) and not geom.isEmpty():
@@ -5922,19 +6150,30 @@ class MainWindow(QMainWindow):
         self.home_tab.start_clicked.connect(self._on_home_start)
         self.home_tab.session_jump.connect(self._on_home_session_jump)
         self.home_tab.mode_changed.connect(self._on_mode_changed)
-        self.tabs.addTab(self.home_tab, "ホーム")
-        # 表示する tab を SETTINGS から
+        # グラフ専用タブ (Dashboard とは独立、大きく表示)
+        self.graphs_tab = GraphsTab()
+
+        self.tabs.addTab(self.home_tab, _t("tab.home"))
+        # 表示する tab を SETTINGS から (直接追加。1 画面に収めるため scroll ラップ無し)
         tab_defs = [
-            ("dashboard", self.dashboard, "Dashboard"),
-            ("sessions",  self.sessions_tab, "Sessions"),
-            ("shots",     self.shots_tab, "Shots"),
-            ("help",      self.help_tab, "Help"),
+            ("dashboard", self.dashboard,    _t("tab.dashboard")),
+            ("graphs",    self.graphs_tab,   _t("tab.graphs")),
+            ("sessions",  self.sessions_tab, _t("tab.sessions")),
+            ("shots",     self.shots_tab,    _t("tab.shots")),
+            ("help",      self.help_tab,     _t("tab.help")),
         ]
         for key, w, label in tab_defs:
             if SETTINGS.get(f"tabs/{key}"):
                 self.tabs.addTab(w, label)
         # Settings タブは常時表示
-        self.tabs.addTab(self.settings_tab, "Settings")
+        self.tabs.addTab(self.settings_tab, _t("tab.settings"))
+        # 互換: 旧コードが _tab_wrap[x] を読んでいたら x がそのまま返るようマップ
+        self._tab_wrap = {w: w for w in [self.home_tab, self.dashboard, self.graphs_tab,
+                                          self.sessions_tab, self.shots_tab,
+                                          self.help_tab, self.settings_tab]}
+        self._pending_trace_for_tabs = None  # 未使用 (互換のため残置)
+        self._latest_secondary: dict | None = None
+        self.tabs.currentChanged.connect(self._on_tab_changed)
 
         # 左ペイン: フィルタコンボ + shot 一覧 (設定で非表示も可)
         self.shot_list = ShotListPanel(db_path)
@@ -5961,6 +6200,9 @@ class MainWindow(QMainWindow):
         )
         slv.addWidget(self.shot_filter_combo)
         slv.addWidget(self.shot_list, stretch=1)
+        # 折り畳み時 0 まで縮められるよう min を抑える
+        self.shot_list_wrapper.setMinimumWidth(0)
+        self.shot_list.setMinimumWidth(0)
 
         self.main_splitter = QSplitter()
         if SETTINGS.get("layout/show_shot_list"):
@@ -5991,7 +6233,12 @@ class MainWindow(QMainWindow):
         )
         tb.addWidget(sess_lbl)
         self.session_selector = QComboBox()
-        self.session_selector.setMinimumWidth(280)
+        # 極小ウィンドウでも収まるよう min 幅を最小限に (ロングテキストは省略)
+        self.session_selector.setMinimumWidth(100)
+        self.session_selector.setMinimumContentsLength(8)
+        self.session_selector.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
         self.session_selector.setStyleSheet(
             f"QComboBox {{ background-color: {hex_of(C.BG)}; color: {hex_of(C.FG)};"
             f"  border: 1px solid {hex_of(C.BORDER_STRONG)}; padding: 3px 8px;"
@@ -6030,7 +6277,7 @@ class MainWindow(QMainWindow):
         prof_lbl.setStyleSheet(f"color: {hex_of(C.FG_MUTED)}; font-size: 11px; padding: 0 4px;")
         tb.addWidget(prof_lbl)
         self.profile_selector = QComboBox()
-        self.profile_selector.setMinimumWidth(120)
+        self.profile_selector.setMinimumWidth(80)
         self.profile_selector.setStyleSheet(
             f"QComboBox {{ background-color: {hex_of(C.BG)}; color: {hex_of(C.FG)};"
             f"  border: 1px solid {hex_of(C.BORDER_STRONG)}; padding: 2px 8px; }}"
@@ -6058,7 +6305,7 @@ class MainWindow(QMainWindow):
         about_action.setMenuRole(about_action.MenuRole.AboutRole)
         prefs_action = app_menu.addAction("設定…")
         prefs_action.setShortcut("Ctrl+,")
-        prefs_action.triggered.connect(lambda: self.tabs.setCurrentWidget(self.settings_tab))
+        prefs_action.triggered.connect(lambda: self.tabs.setCurrentWidget(self._tab_wrap.get(self.settings_tab, self.settings_tab)))
         prefs_action.setMenuRole(prefs_action.MenuRole.PreferencesRole)
 
         self.status = QStatusBar()
@@ -6082,11 +6329,13 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+E"), self).activated.connect(self._export_shots_csv)
         # Cmd+Shift+E: JSON
         QShortcut(QKeySequence("Ctrl+Shift+E"), self).activated.connect(self._export_shots_json)
-        # Space: Live トグル
-        QShortcut(QKeySequence("Space"), self).activated.connect(self._toggle_live)
+        # Space: 軌道再生トグル (再生中なら停止) — mini_target が対象
+        QShortcut(QKeySequence("Space"), self).activated.connect(self._toggle_trace_playback)
+        # Ctrl+L: Live トグル (旧 Space)
+        QShortcut(QKeySequence("Ctrl+L"), self).activated.connect(self._toggle_live)
         # F1: Help タブへ
         QShortcut(QKeySequence("F1"), self).activated.connect(
-            lambda: self.tabs.setCurrentWidget(self.help_tab)
+            lambda: self.tabs.setCurrentWidget(self._tab_wrap.get(self.help_tab, self.help_tab))
         )
         # ← →: shot リスト移動 (shot_list がフォーカスを持ってなくても動くように)
         QShortcut(QKeySequence("Down"), self).activated.connect(self._next_shot)
@@ -6177,6 +6426,23 @@ class MainWindow(QMainWindow):
         self.sessions_tab.reload(self.db_path, self._hr_at_shot)
         self.status.showMessage("reloaded")
 
+    def _toggle_trace_playback(self):
+        """Space キー: mini target の軌道再生をトグル。"""
+        tgt = getattr(self.dashboard, "mini_target", None)
+        if tgt is None:
+            return
+        try:
+            if tgt._play_timer.isActive():
+                tgt.stop_playback()
+                self.status.showMessage("軌道再生 停止", 1500)
+            elif tgt._play_samples:
+                tgt.start_playback()
+                self.status.showMessage("軌道再生 ▶", 1500)
+            else:
+                self.status.showMessage("再生する trace が選択されていません", 1500)
+        except Exception as e:
+            LOG.warn(f"trace playback toggle failed: {e}")
+
     def _toggle_live(self):
         if self.poller is None:
             interval = SETTINGS.get("behavior/polling_interval_s")
@@ -6233,8 +6499,15 @@ class MainWindow(QMainWindow):
         if sid is None or sid == self._current_session_id:
             return
         # 該当 session の最新 shot 付き trace、なければ最新 trace を表示
+        # + 距離からターゲット種目を自動切替 (50m / 10m AR / 10m AP)
+        session_meta = None
         try:
             conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=2.0)
+            meta_row = conn.execute(
+                "SELECT distance, caliber FROM sessions WHERE session_id=?", (sid,)
+            ).fetchone()
+            if meta_row:
+                session_meta = {"distance": meta_row[0], "caliber": meta_row[1]}
             row = conn.execute(
                 "SELECT trace_id FROM shots WHERE deleted=0 AND trace_id IN "
                 "(SELECT trace_id FROM traces WHERE session_id = ?) "
@@ -6248,12 +6521,20 @@ class MainWindow(QMainWindow):
             conn.close()
         except Exception:
             row = None
+        # 注: discipline はユーザ Settings (rifle_50m / rifle_10m / pistol_10m) で固定。
+        # 以前自動切替を入れていたが、trace と ring の比率が session ごとに変わって
+        # 表示が不安定になるので、明示設定だけを尊重するように戻した。
         self._update_session_views(sid)
         if row:
             self._replay_trace_id(row[0])
         # active かどうかインジケータ更新
         self.active_indicator.setVisible(sid == self._scatt_active_session_id)
-        self.status.showMessage(f"session: #{sid}")
+        if session_meta:
+            self.status.showMessage(
+                f"session #{sid} ({session_meta['distance']}m) — {T.current().label}", 4000
+            )
+        else:
+            self.status.showMessage(f"session: #{sid}")
 
     def _on_active_session_changed(self, sid: int):
         """SCATT 側の最新 trace が別 session になった(SCATT 内で session 切替検出)"""
@@ -6377,7 +6658,7 @@ class MainWindow(QMainWindow):
                 self._reload_after_profile_switch()
 
     def _on_home_start(self, profile_id: str, discipline_key: str, mode_key: str = None):
-        """ホームタブの「始める」 → Dashboard に切り替えて反映。"""
+        """ホームタブの「始める」 → 表示をクリアして次の trace を待つ。"""
         # profile / discipline / mode は HomeTab 内で SETTINGS / PROFILES に反映済み
         self._refresh_profile_selector()
         self._session_cache.clear()
@@ -6387,10 +6668,24 @@ class MainWindow(QMainWindow):
             self.dashboard._rebuild_graphs() if hasattr(self.dashboard, "_rebuild_graphs") else None
         except Exception as e:
             LOG.warn(f"dashboard rebuild on mode switch failed: {e}")
+        # 「始める」 = 待機状態。前 session の display を表立っていじらない。
+        # 次に SCATT から trace が来たら _on_new_trace → _apply_trace で
+        # 通常通り全タブが更新される。
+        self._current_session_id = None
+        self._current_trace_dict = None
+        self._pending_trace_for_tabs = None
+        try:
+            self.shot_list.set_session(None)  # shot 一覧は空に
+        except Exception:
+            pass
+        self.session_selector.blockSignals(True)
+        self.session_selector.setCurrentIndex(-1)
+        self.session_selector.blockSignals(False)
         self._reload_after_profile_switch()
         # Dashboard へ移動
+        dash_wrap = self._tab_wrap.get(self.dashboard, self.dashboard)
         for i in range(self.tabs.count()):
-            if self.tabs.widget(i) is self.dashboard:
+            if self.tabs.widget(i) is dash_wrap:
                 self.tabs.setCurrentIndex(i)
                 break
 
@@ -6408,9 +6703,22 @@ class MainWindow(QMainWindow):
 
     def _on_home_session_jump(self, sid: int):
         """ホームの最近セッション行ダブルクリック → そのセッションへ。"""
+        # _on_home_start で表示をクリア (Dashboard / shot list / session selector)
         self._on_home_start(PROFILES.current_id(), T.current_key())
+        # 目的セッションを session_selector で選択 → _on_session_selected が
+        # discipline 自動切替 + shot list 再読込 + 最新 trace 描画を行う
         try:
-            self.set_session(sid)
+            for i in range(self.session_selector.count()):
+                if self.session_selector.itemData(i) == sid:
+                    self.session_selector.setCurrentIndex(i)
+                    return
+            # selector に無ければ reload してから再試行
+            self._reload_session_list()
+            for i in range(self.session_selector.count()):
+                if self.session_selector.itemData(i) == sid:
+                    self.session_selector.setCurrentIndex(i)
+                    return
+            LOG.warn(f"home session jump: session #{sid} が selector に見つからない")
         except Exception as e:
             LOG.warn(f"home session jump failed: {e}")
 
@@ -6419,8 +6727,16 @@ class MainWindow(QMainWindow):
         try:
             self.dashboard._rebuild_hero_row()
         except Exception as e:
-            LOG.warn(f"dashboard rebuild on mode change failed: {e}")
-        self.status.showMessage(f"モード: {MODES.current().label}", 3000)
+            LOG.warn(f"hero_row rebuild on mode change failed: {e}")
+        try:
+            # target_focus 等で show_* フラグが変わっているので layout 全体も再評価
+            self._on_layout_changed()
+        except Exception as e:
+            LOG.warn(f"layout reload on mode change failed: {e}")
+        try:
+            self.status.showMessage(f"モード: {MODES.current().label}", 3000)
+        except Exception:
+            pass
 
     def _reload_after_profile_switch(self):
         """profile 切替後にキャッシュを捨てて UI を更新。"""
@@ -6464,11 +6780,17 @@ class MainWindow(QMainWindow):
     def _on_layout_changed(self):
         """Settings タブから layout 変更が来たとき、Dashboard を再構築。"""
         # 主役 KPI 4 枠を再構築 (中身の指標が変わった可能性)
-        self.dashboard._rebuild_hero_row()
+        try:
+            self.dashboard._rebuild_hero_row()
+        except Exception as e:
+            LOG.warn(f"hero row rebuild failed: {e}")
         # グラフ枠を再構築
-        rows = SETTINGS.get("layout/dashboard_graph_rows")
-        cols = SETTINGS.get("layout/dashboard_graph_cols")
-        self.dashboard.rebuild_graphs(rows, cols)
+        rows = SETTINGS.get("layout/dashboard_graph_rows") or 2
+        cols = SETTINGS.get("layout/dashboard_graph_cols") or 2
+        try:
+            self.dashboard.rebuild_graphs(rows, cols)
+        except Exception as e:
+            LOG.warn(f"rebuild_graphs failed: {e}")
         # 表示要素の可視性
         self.dashboard._hero_row_widget.setVisible(SETTINGS.get("layout/show_hero_cards"))
         self.dashboard.mini_target.setVisible(SETTINGS.get("layout/show_mini_target"))
@@ -6569,6 +6891,7 @@ class MainWindow(QMainWindow):
                 match=bool(s.get("match_shot")),
                 missed=bool(s.get("missed")),
                 favorite=bool(s.get("favorite")),
+                session_id=t.get("session_id"),
             )
         # session shots cache を invalidate して D/E タブを更新
         sid = t["session_id"]
@@ -6579,7 +6902,7 @@ class MainWindow(QMainWindow):
 
     def _on_shot_selected(self, trace_id: int):
         self._replay_trace_id(trace_id)
-        self.tabs.setCurrentWidget(self.dashboard)
+        self.tabs.setCurrentWidget(self._tab_wrap.get(self.dashboard, self.dashboard))
 
     def _on_sessions_tab_select(self, sid: int):
         """Sessions タブの行クリック → session_selector を変更 + Dashboard へ。"""
@@ -6587,7 +6910,7 @@ class MainWindow(QMainWindow):
             if self.session_selector.itemData(i) == sid:
                 self.session_selector.setCurrentIndex(i)
                 break
-        self.tabs.setCurrentWidget(self.dashboard)
+        self.tabs.setCurrentWidget(self._tab_wrap.get(self.dashboard, self.dashboard))
 
     def _on_delete_committed(self):
         """ShotsTab で削除が確定したあとの後処理: cache クリア + 全タブ更新。
@@ -6685,9 +7008,10 @@ class MainWindow(QMainWindow):
             if s["shot_id"] != cur_shot_id
             and not (self._hr_at_shot.get(s["shot_id"]) or {}).get("hidden")
         ]
+        # Dashboard と Target (ミニ) は主役なので常時更新
         self.dashboard.update_trace(samples, shots, sr, session_shots=compare_set)
-        self.spectrum.update_trace(samples, shots, sr)
-        # Recoil タブはセッション単位 (現セッションの全 shot で集計、現在 shot は graph 用に渡す)
+        self.target.update_trace(samples, shots, sr)
+        # それ以外は表示中タブだけ更新 (Live polling 中の重さ軽減)
         sess_shots_for_recoil = self._session_cache.get((sid, "session"), [])
         meta = {
             "distance": (t.get("session") or {}).get("distance", "—"),
@@ -6695,15 +7019,62 @@ class MainWindow(QMainWindow):
                 (t.get("session") or {}).get("position"), "—"
             ),
         }
-        self.recoil_tab.update_session(
-            sid, meta, sess_shots_for_recoil,
-            current_samples=samples, current_shots=shots, sample_rate=sr,
-        )
-        self.cant_tab.update_session(
-            sid, meta, sess_shots_for_recoil,
-            current_samples=samples, current_shots=shots, sample_rate=sr,
-        )
-        self.target.update_trace(samples, shots, sr)
+        # latest をキャッシュしておき、タブ切替時に再適用できるようにする
+        self._latest_secondary = {
+            "samples": samples, "shots": shots, "sr": sr,
+            "compare_set": compare_set,
+            "sid": sid, "meta": meta,
+            "sess_shots_for_recoil": sess_shots_for_recoil,
+        }
+        self._refresh_secondary_tabs()
+
+    def _refresh_secondary_tabs(self):
+        """latest trace を使い、現在表示中のタブだけ重い更新を走らせる。"""
+        data = getattr(self, "_latest_secondary", None)
+        if not data:
+            return
+        samples = data["samples"]; shots = data["shots"]; sr = data["sr"]
+        compare_set = data["compare_set"]; sid = data["sid"]; meta = data["meta"]
+        sess_shots_for_recoil = data["sess_shots_for_recoil"]
+        cur = self.tabs.currentWidget() if hasattr(self, "tabs") else None
+        graphs_w = self._tab_wrap.get(self.graphs_tab, self.graphs_tab)
+        sessions_w = self._tab_wrap.get(self.sessions_tab, self.sessions_tab)
+        if cur is graphs_w:
+            try:
+                self.graphs_tab.update_trace(samples, shots, sr, session_shots=compare_set)
+            except Exception as e:
+                LOG.warn(f"graphs_tab update failed: {e}")
+        if cur is sessions_w:
+            try:
+                self.spectrum.update_trace(samples, shots, sr)
+            except Exception as e:
+                LOG.warn(f"spectrum update failed: {e}")
+            try:
+                self.recoil_tab.update_session(
+                    sid, meta, sess_shots_for_recoil,
+                    current_samples=samples, current_shots=shots, sample_rate=sr,
+                )
+            except Exception as e:
+                LOG.warn(f"recoil update failed: {e}")
+            try:
+                self.cant_tab.update_session(
+                    sid, meta, sess_shots_for_recoil,
+                    current_samples=samples, current_shots=shots, sample_rate=sr,
+                )
+            except Exception as e:
+                LOG.warn(f"cant update failed: {e}")
+
+    def _on_tab_changed(self, _idx: int):
+        """タブ切替時に、表示されたタブを最新 trace で更新する。"""
+        # Dashboard 内グラフ widget が再表示されたら、キャッシュから redraw
+        try:
+            if self.dashboard._graphs_widget.isVisible():
+                for g in self.dashboard.graphs:
+                    if getattr(g, "_last_args", None) is not None:
+                        g._redraw()
+        except Exception:
+            pass
+        self._refresh_secondary_tabs()
 
     def _update_session_views(self, sid: int):
         if sid is None:
@@ -6893,8 +7264,9 @@ def main():
     w.show()
     # ホームタブを自動フォーカス (条件付き) — 初回起動 or 複数 profile
     if HOME.should_auto_focus(SETTINGS, PROFILES):
+        home_wrap = w._tab_wrap.get(w.home_tab, w.home_tab)
         for i in range(w.tabs.count()):
-            if w.tabs.widget(i) is w.home_tab:
+            if w.tabs.widget(i) is home_wrap:
                 w.tabs.setCurrentIndex(i)
                 break
     sys.exit(app.exec())

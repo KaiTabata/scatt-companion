@@ -39,7 +39,7 @@ MODES: dict[str, Mode] = {
             "反動の詳細分析、心拍 / HRV 連携を活用。"
         ),
         suggested_discipline="rifle_50m",
-        hero_kpis=("ten_a_1s", "ten_a_05s", "s1_mm_s", "r95_05"),
+        hero_kpis=("ten_a_1s", "ten_a_05s", "r95_1", "r95_05"),
         default_graphs=(
             "velocity", "scatter", "r95_history", "r95_bars",
             "cant_history", "spectrum",
@@ -55,7 +55,7 @@ MODES: dict[str, Mode] = {
             "S1 と着弾の相関、銃の安定度と精度の関係を実データで可視化。"
         ),
         suggested_discipline="rifle_10m",
-        hero_kpis=("timing_v", "s1_mm_s", "hr_at_fire", "recoil_post05_r95"),
+        hero_kpis=("timing_v", "r95_1", "hr_at_fire", "recoil_post05_r95"),
         default_graphs=(
             "velocity", "followthrough_overlay", "s1_vs_fire_r", "spectrum",
             "centroid_vs_ten_a", "s1_history", "hr_time", "trace_xy",
@@ -72,7 +72,7 @@ MODES: dict[str, Mode] = {
             "重心 R95 + 平均速度 + 力み のみ。10a 等のターゲット中心指標は隠す。"
         ),
         suggested_discipline="rifle_10m",
-        hero_kpis=("timing_v", "s1_mm_s", "centroid_r95_05", "tremor"),
+        hero_kpis=("timing_v", "r95_1", "centroid_r95_05", "tremor"),
         default_graphs=(
             "velocity", "centroid_trace", "spectrum", "cant_history",
             "cant_time", "timing_history", "hold_history",
@@ -122,4 +122,9 @@ def apply_to_settings(mode_key: str, settings) -> bool:
     # デフォルトグラフ 9 枠
     for i, g in enumerate(m.default_graphs, 1):
         settings.set(f"layout/graph_default_{i}", g)
+    # 表示要素は標準に戻す (過去に target_focus 等で False になっていても復元)
+    for k in ("layout/show_hero_cards", "layout/show_mini_target",
+              "layout/show_metrics_table", "layout/show_feedback",
+              "layout/show_graphs"):
+        settings.set(k, True)
     return True

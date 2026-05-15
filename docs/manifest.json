@@ -1,5 +1,5 @@
 {
-  "latest_version": "0.4.0",
-  "url": "https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.0/scatt-companion-0.4.0.dmg",
-  "notes": "v0.4.0 — SCATT Companion へ改名 + AR モード本実装 / 3 モード (伏射 / AR / ホールド練習) / shot list ミニターゲット / Live 即時診断 / 2 shot 比較 / ダークモード / 軌跡アニメ再生 / セッション総括カード"
+  "latest_version": "0.4.8",
+  "url": "https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.8/scatt-companion-0.4.8.dmg",
+  "notes": "v0.4.8 — 起動直後のハング (resizeEvent 無限ループ) 修正 / 種目別グラフ閾値 / shot scatter にターゲットリング / S1 非表示化 / ダークモード削除 / Makefile py2app ビルド修正"
 }
