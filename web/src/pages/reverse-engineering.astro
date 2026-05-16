@@ -1,0 +1,328 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+const toc = [
+  { id: 'why',           label: '1. なぜリバースしたか' },
+  { id: 'overview',      label: '2. ファイル構造' },
+  { id: 'observation',   label: '3. 最初の観察' },
+  { id: 'decoding',      label: '4. 復号の 4 段階' },
+  { id: 'xor-key',       label: '5. XOR 鍵の特定' },
+  { id: 'sample-format', label: '6. サンプル形式' },
+  { id: 'full-code',     label: '7. Python 実装' },
+  { id: 'verify',        label: '8. 検証' },
+  { id: 'legal',         label: '9. 法的・倫理的' },
+];
+---
+
+<BaseLayout title="SCATT データのリバースエンジニアリング解説" description="SCATT Expert の trace.data BLOB を 4 段階で復号した手順。XOR 鍵の特定、qCompress アンラップ、サンプル列パース。">
+  <Nav />
+
+  <header class="border-b border-neutral-200">
+    <div class="mx-auto max-w-6xl px-6 py-16">
+      <p class="text-xs uppercase tracking-widest text-neutral-400 mb-3">Reverse Engineering</p>
+      <h1 class="text-3xl sm:text-4xl font-display font-semibold tracking-tight text-neutral-950 max-w-3xl">
+        SCATT Expert データの復号
+      </h1>
+      <p class="mt-4 text-sm text-neutral-500 max-w-2xl leading-relaxed">
+        なぜ自前で復号する必要があったか、そして暗号化された <code class="bg-neutral-100 px-1.5 py-0.5 rounded">trace.data</code> BLOB を 4 段階でほどいた手順。
+      </p>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-6 py-12 grid grid-cols-1 md:grid-cols-[200px_1fr] gap-12">
+    <aside class="hidden md:block">
+      <nav class="sticky top-16 text-sm">
+        <p class="text-xs uppercase tracking-widest text-neutral-400 mb-3">目次</p>
+        <ol class="space-y-1.5">
+          {toc.map((t) => (
+            <li>
+              <a href={`#${t.id}`} class="text-neutral-500 hover:text-neutral-900 transition-colors">
+                {t.label}
+              </a>
+            </li>
+          ))}
+        </ol>
+      </nav>
+    </aside>
+
+    <article class="prose-re text-neutral-700 space-y-16">
+      <section id="why">
+        <h2>1. なぜリバースしたか</h2>
+        <p>
+          SCATT Expert は射手に有用な軌跡データを内部で計算しているが、
+          <strong>その生データを外部に出す API も公式エクスポートも提供していない</strong>。
+          独自の解析 (力みの周波数、反動の方向、心拍と安定度の相関) を行うには生サンプル列が必要だった。
+        </p>
+        <p>
+          <code>~/Library/Application Support/SCATT Electronics/Scatt Expert/storage.dat</code> は
+          SQLite データベースで、これを read-only で開けば session / shot のメタデータは取れる。
+          しかし軌跡 (120Hz のサンプル列) は <code>traces.data</code> カラムに
+          <strong>暗号化済み BLOB</strong> として格納されており、そのままでは読めない。
+        </p>
+        <p>本ソフトは、この BLOB を独自リバースで完全復号して使っている。</p>
+      </section>
+
+      <section id="overview">
+        <h2>2. ファイル構造の全体像</h2>
+        <p><code>storage.dat</code> は標準的な SQLite 3 ファイル:</p>
+        <pre><code>$ file ~/Library/Application\ Support/SCATT\ Electronics/Scatt\ Expert/storage.dat
+storage.dat: SQLite 3.x database, last written using SQLite version 3038003</code></pre>
+        <p>主なテーブル:</p>
+        <ul>
+          <li><code>sessions</code> — 練習セッション (id, position, distance, caliber, sample_rate)</li>
+          <li><code>traces</code> — 1 trace = 1 shot 相当 (id, session_id, timer, <strong>data BLOB</strong>)</li>
+          <li><code>shots</code> — 撃発イベント (trace_id への参照、trace 内オフセット、phase 等)</li>
+        </ul>
+        <p>
+          <code>traces.data</code> 以外は素直に読める。問題は data カラムの中身が
+          <em>明らかに圧縮 + 暗号化されたバイナリ</em>である点。
+        </p>
+      </section>
+
+      <section id="observation">
+        <h2>3. 最初の観察</h2>
+        <p>BLOB の最初の数バイトを抜き出して観察すると、こんな見た目:</p>
+        <pre><code>offset 0:  01                       ← 1 byte バージョン (常に 0x01)
+offset 1:  e3 8a 47 7c f8 c9 ...    ← ランダムに見えるバイト列が続く</code></pre>
+        <p>
+          頭の <code>0x01</code> はバージョン番号らしい。続くデータはエントロピーが高く、
+          ランダムにしか見えない。通常は圧縮後に暗号化するので、圧縮済みデータはエントロピーが高い。
+        </p>
+        <p>
+          ここで仮説: <strong>暗号化が単純な XOR で、その上に qCompress (zlib) が乗っている</strong>。
+          SCATT Expert は Qt で書かれていることが strings コマンドの結果から判明していて、Qt の <code>qCompress</code> は zlib + 4 バイト長前置の独自フォーマット。
+        </p>
+      </section>
+
+      <section id="decoding">
+        <h2>4. 復号の 4 段階</h2>
+        <p>結論から書くと、<code>traces.data</code> は次の 4 段階で復号できる:</p>
+
+        <div class="phase">
+          <h4><span class="step">A</span>バージョンバイトの確認</h4>
+          <p>先頭 1 バイトが <code>0x01</code> であることを確認 → 残りが本体。</p>
+        </div>
+
+        <div class="phase">
+          <h4><span class="step">B</span>XOR 復号 (CBC 風 chain)</h4>
+          <p>16 バイト固定 XOR 鍵を使って <strong>1 バイトずつ</strong>復号。各バイトはさらに <strong>1 つ前の暗号文バイト</strong>とも XOR される (CBC モード風)。</p>
+          <pre><code>for i, c in enumerate(body):
+    out[i] = prev ^ c ^ XOR_KEY[i % 16]
+    prev = c   # ← 1 つ前の "暗号文" バイトを次に渡す</code></pre>
+          <p>これにより、同じデータでも先頭が違えば後ろも変わる (パターンを隠す)。</p>
+        </div>
+
+        <div class="phase">
+          <h4><span class="step">C</span>qCompress 形式のアンラップ</h4>
+          <p>復号後の最初の 1 バイト + 2 バイト (qChecksum) を捨て、残り 4 バイトを zlib 用の長さヘッダとしてスキップし、<code>zlib.decompress()</code> にかける。</p>
+          <pre><code>raw = zlib.decompress(decoded[1:][2:][4:])</code></pre>
+          <p>Qt の qCompress フォーマットは <em>4-byte BE 長さ + zlib stream</em> という独自仕様。</p>
+        </div>
+
+        <div class="phase">
+          <h4><span class="step">D</span>マジックバイト + サンプル列パース</h4>
+          <p>展開後の先頭 4 バイトが <code>0x0a 0x0b 0x0c 0x0d</code> ならば成功。その後、<code>offset 12-14</code> に <strong>2 バイト BE のサンプル数</strong>、<code>offset 15</code> 以降に 12 バイト × N の連続サンプル。</p>
+          <pre><code>magic = raw[:4]            # b"\x0a\x0b\x0c\x0d"
+n = struct.unpack(">H", raw[12:14])[0]
+samples = [struct.unpack(">fff", raw[15 + i*12 : 15 + (i+1)*12])
+           for i in range(n)]</code></pre>
+        </div>
+      </section>
+
+      <section id="xor-key">
+        <h2>5. XOR 鍵の特定 — バイナリ静的解析</h2>
+        <p>
+          鍵は <strong>SCATT Expert</strong> 本体の Mach-O バイナリの <code>__const</code> セクションに平文で埋め込まれていた。Hopper / Ghidra で逆アセンブルし、<code>storage</code> 文字列の周辺関数を辿ると XOR ループが見つかり、ループで参照されている定数アドレスを追って <strong>0x1000d6f50 番地</strong>に到達。
+        </p>
+        <p>そこに 16 バイト連続で並んでいたのが鍵:</p>
+        <pre><code>XOR_KEY = bytes([
+    0xe3, 0x00, 0xe9, 0x00, 0x34, 0x85, 0x1d, 0x04,
+    0xf0, 0x95, 0xc0, 0x70, 0x0e, 0x1e, 0xb9, 0xf3,
+])</code></pre>
+        <p>
+          これは本ソフト独自の改変や鍵生成ではなく、SCATT Expert が自身のデータを保存するときに使っている鍵そのもの。<strong>つまり、これを既知のフォーマット仕様として扱う</strong>ことに等しい (DRM の迂回ではない)。
+        </p>
+      </section>
+
+      <section id="sample-format">
+        <h2>6. サンプル形式 — QDataStream の中身</h2>
+        <p>1 サンプル = 12 バイト、全フィールド <strong>big-endian</strong>:</p>
+        <pre><code>+0:  XX XX XX XX   X 座標 (mm) — float32 BE
++4:  YY YY YY YY   Y 座標 (mm) — float32 BE
++8:  CC CC CC CC   Cant 角 (radians) — float32 BE</code></pre>
+        <p>
+          X / Y は <strong>SCATT の画面座標系</strong>(Y は下方向が正)。Cant は銃身ロール角で、水平が 0、右に傾けると正。サンプリングレートは <code>sessions.sample_rate</code> から取得 (典型 120 Hz)。
+        </p>
+        <p>
+          shot との対応は <code>shots.trace_offset</code> カラム — これは trace 内 N 番目のサンプルが撃発の瞬間に対応する。本ソフトでは <code>samples[:trace_offset]</code> を <em>pre-trigger</em>、<code>samples[trace_offset:]</code> を <em>post-trigger</em> (反動) として解析する。
+        </p>
+      </section>
+
+      <section id="full-code">
+        <h2>7. 完全な Python 復号関数</h2>
+        <p>上記すべてを束ねた実装:</p>
+        <pre><code>import struct, zlib
+
+XOR_KEY = bytes([
+    0xe3, 0x00, 0xe9, 0x00, 0x34, 0x85, 0x1d, 0x04,
+    0xf0, 0x95, 0xc0, 0x70, 0x0e, 0x1e, 0xb9, 0xf3,
+])
+
+def decode_trace(blob: bytes):
+    if not blob or blob[0] != 0x01:
+        raise ValueError("bad version byte")
+    body = blob[1:]
+    # ----- Phase B: XOR 復号 (CBC 風 chain) -----
+    out = bytearray(len(body))
+    prev = 0
+    for i, c in enumerate(body):
+        out[i] = prev ^ c ^ XOR_KEY[i % 16]
+        prev = c
+    # ----- Phase C: qCompress (1B drop + 2B qChecksum + 4B BE length + zlib) -----
+    raw = zlib.decompress(bytes(out[1:])[2:][4:])
+    # ----- Phase D: マジック + サンプル列 -----
+    if raw[:4] != b"\x0a\x0b\x0c\x0d":
+        raise ValueError("bad magic")
+    n = struct.unpack(">H", raw[12:14])[0]
+    return [
+        struct.unpack(">fff", raw[15 + i * 12:15 + (i + 1) * 12])
+        for i in range(n)
+    ]</code></pre>
+        <p>
+          これがリポジトリ <a href="https://github.com/KaiTabata/scatt-companion/blob/main/scatt_gui.py"><code>scatt_gui.py</code></a> の <code>decode_trace()</code> として実装されている関数の全文 (コメントを追加した版)。14 行ほどでフォーマット全体を再現できる。
+        </p>
+      </section>
+
+      <section id="verify">
+        <h2>8. 検証 — 本家との一致確認</h2>
+        <p>正しく復号できているか、次のような確認をした:</p>
+        <ol>
+          <li><strong>サンプル数の一致</strong>: <code>n</code> × 12 + 15 = 展開後の長さに一致するかチェック</li>
+          <li><strong>shots.trace_offset</strong> の位置を取り出して X/Y を表示 → SCATT の表示する着弾点と画面上で一致 (mm 精度)</li>
+          <li><strong>軌跡を本家 SCATT の表示と並べる</strong> → 完全に同じ軌跡を再現</li>
+          <li><strong>Cant 角</strong>: 銃を意図的に傾けて撃った trace で、復号した Cant が ±5° 程度の差で本家の表示と一致</li>
+        </ol>
+        <p>これにより、復号は <strong>意図したサンプル列を 100% 再現している</strong>と判断できた。</p>
+      </section>
+
+      <section id="legal">
+        <h2>9. 法的・倫理的観点</h2>
+        <div class="callout">
+          <p>
+            <strong>このソフトは SCATT Electronics の公式ソフトではない</strong>。SCATT は本作の開発・運用に一切関与していない。"SCATT" と "SCATT Expert" は SCATT Electronics の商標。
+          </p>
+        </div>
+        <p>本作の立ち位置:</p>
+        <ul>
+          <li><strong>自分の射撃データを自分で解析するため</strong>のリバース。ユーザ自身が SCATT Expert を購入・使用して作成したデータを、ユーザ自身が読み解く補助をするだけ。</li>
+          <li>本ソフトは <strong>SCATT Expert を再配布したり改変したり置き換えたりしない</strong>。SCATT 本体は通常通りインストールが必要。</li>
+          <li>復号鍵は <strong>SCATT Expert バイナリ自体に平文で埋め込まれていた</strong>ものを参照しているにすぎない (秘匿された秘密鍵ではない)。</li>
+          <li>本ソフトは <strong>Apache License 2.0</strong> で公開。ソースが完全に公開されているため、悪用や隠れた挙動の余地はない。</li>
+          <li>SCATT 側のデータベースへの書き込みは、ユーザが明示的に「異常 shot 削除」を実行したときに限り、<code>shots</code> 行の <code>deleted=1</code> フラグ更新のみ。</li>
+        </ul>
+        <p>
+          日本国内法では「相互運用性 (interoperability) を目的とする逆コンパイル」については著作権法 30 条の 4 (情報解析に必要な軽微な利用)、および技術的保護手段の迂回禁止の例外規定で判断される。本作は商業競合品ではなく、補助ツールという立場。
+        </p>
+      </section>
+
+      <section>
+        <h2>付録: 試したい人へ</h2>
+        <p>もし手元の SCATT Expert データで試したい場合 (macOS):</p>
+        <pre><code>git clone https://github.com/KaiTabata/scatt-companion.git
+cd scatt-companion
+make install   # PyQt6, numpy, pyqtgraph, bleak
+make gui       # GUI から見る</code></pre>
+      </section>
+    </article>
+  </main>
+
+  <Footer />
+</BaseLayout>
+
+<style>
+  .prose-re :global(h2) {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 600;
+    color: rgb(10 10 10);
+    letter-spacing: -0.01em;
+    margin-bottom: 1rem;
+    scroll-margin-top: 4rem;
+  }
+  .prose-re :global(h4) {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: rgb(23 23 23);
+    margin: 0 0 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .prose-re :global(p) { line-height: 1.75; margin: 0.75rem 0; }
+  .prose-re :global(ul),
+  .prose-re :global(ol) {
+    padding-left: 1.25rem;
+    line-height: 1.85;
+    color: rgb(82 82 82);
+    margin: 0.5rem 0;
+  }
+  .prose-re :global(ul) { list-style-type: disc; }
+  .prose-re :global(ol) { list-style-type: decimal; }
+  .prose-re :global(li) { margin: 4px 0; }
+  .prose-re :global(strong) { color: rgb(23 23 23); font-weight: 600; }
+  .prose-re :global(em) { font-style: italic; color: rgb(82 82 82); }
+  .prose-re :global(a) { color: rgb(23 23 23); text-decoration: underline; }
+  .prose-re :global(a:hover) { color: rgb(64 64 64); }
+  .prose-re :global(code) {
+    background: rgb(245 245 245);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    color: rgb(31 41 55);
+  }
+  .prose-re :global(pre) {
+    background: rgb(10 14 22);
+    color: rgb(229 231 235);
+    padding: 16px 20px;
+    border-radius: 10px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.65;
+    margin: 1rem 0;
+  }
+  .prose-re :global(pre code) {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+  }
+  .prose-re :global(.phase) {
+    border-left: 2px solid rgb(212 212 212);
+    padding: 4px 16px 4px 20px;
+    margin: 24px 0;
+  }
+  .prose-re :global(.phase .step) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgb(23 23 23);
+    color: white;
+    border-radius: 999px;
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+  }
+  .prose-re :global(.callout) {
+    background: rgb(255 251 235);
+    border: 1px solid rgb(245 230 175);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin: 16px 0;
+  }
+  .prose-re :global(.callout p) { margin: 0; color: rgb(120 80 30); }
+</style>

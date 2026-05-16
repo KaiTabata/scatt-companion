@@ -1,0 +1,17 @@
+{
+  "name": "scatt-companion-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build && rm -f ../docs/content-assets.mjs ../docs/content-modules.mjs ../docs/data-store.json ../docs/settings.json",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "^5.14.0",
+    "tailwindcss": "^4.1.0",
+    "@tailwindcss/vite": "^4.1.0",
+    "motion": "^12.23.0"
+  }
+}

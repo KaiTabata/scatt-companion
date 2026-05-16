@@ -53,3 +53,12 @@ SCATT_MX*.pdf
 # 個人射撃データ (実 SCATT セッションの軌跡、git 追跡不要)
 video/public/data/*.json
 _build_artifacts/
+
+# Astro / Node (web/ プロジェクト)
+web/node_modules/
+web/.astro/
+web/dist/
+
+# Remotion 出力 (生成物、git 追跡不要)
+video/out/
+video/node_modules/

@@ -1,0 +1,103 @@
+---
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+// 最新バージョン (リリース時にここを更新)
+const version = '0.4.12';
+const dmgUrl = `https://github.com/KaiTabata/scatt-companion/releases/download/v${version}/scatt-companion-${version}.dmg`;
+const exeUrl = `https://github.com/KaiTabata/scatt-companion/releases/download/v${version}/SCATT-Companion-Setup-${version}.exe`;
+---
+
+<section class="relative isolate overflow-hidden">
+  <!-- 余白多めの中央寄せ。タイポは大きく字間詰めて -->
+  <div class="mx-auto max-w-5xl px-6 pt-24 pb-16 sm:pt-32 sm:pb-24 text-center" data-hero>
+    <img
+      src={`${base}/img/icon.png`}
+      alt=""
+      class="mx-auto mb-10 h-16 w-16 rounded-2xl opacity-0"
+      data-hero-icon
+    />
+
+    <h1
+      class="font-display font-semibold tracking-tightest text-neutral-950 opacity-0
+             text-5xl sm:text-7xl lg:text-8xl"
+      data-hero-title
+    >
+      SCATT COMPANION
+    </h1>
+
+    <p
+      class="mx-auto mt-6 max-w-xl text-base sm:text-lg text-neutral-500 opacity-0"
+      data-hero-sub
+    >
+      SCATT Expert の隣で、見えない指標を観察する。
+    </p>
+
+    <div
+      class="mt-10 flex flex-wrap justify-center gap-3 opacity-0"
+      data-hero-cta
+    >
+      <a
+        href={dmgUrl}
+        class="rounded-full bg-neutral-900 text-white px-6 py-2.5 text-sm font-medium
+               transition hover:bg-neutral-700"
+      >
+        Mac (DMG)
+      </a>
+      <a
+        href={exeUrl}
+        class="rounded-full bg-neutral-900 text-white px-6 py-2.5 text-sm font-medium
+               transition hover:bg-neutral-700"
+      >
+        Windows
+      </a>
+      <a
+        href="https://github.com/KaiTabata/scatt-companion"
+        class="rounded-full border border-neutral-300 text-neutral-700 px-6 py-2.5 text-sm font-medium
+               transition hover:border-neutral-900 hover:text-neutral-900"
+      >
+        GitHub
+      </a>
+    </div>
+
+    <p class="mt-4 text-xs text-neutral-400">v{version} · Apache License 2.0</p>
+  </div>
+
+  <!-- 動画 (枠線・影は最小限) -->
+  <div class="mx-auto max-w-5xl px-6 pb-32 opacity-0" data-hero-video>
+    <div class="rounded-2xl overflow-hidden bg-neutral-950 ring-1 ring-neutral-200/50">
+      <video
+        src={`${base}/video/scatt-companion-pv-v2.mp4`}
+        poster={`${base}/video/poster.jpg`}
+        autoplay
+        muted
+        loop
+        playsinline
+        preload="metadata"
+        class="w-full h-auto block"
+      ></video>
+    </div>
+  </div>
+</section>
+
+<!-- Motion (motion.dev) で控えめなフェードイン。順に出現するだけ -->
+<script>
+  import { animate } from 'motion';
+
+  const sequence: [string, number][] = [
+    ['[data-hero-icon]',  0.00],
+    ['[data-hero-title]', 0.10],
+    ['[data-hero-sub]',   0.25],
+    ['[data-hero-cta]',   0.40],
+    ['[data-hero-video]', 0.55],
+  ];
+
+  for (const [sel, delay] of sequence) {
+    const el = document.querySelector(sel) as HTMLElement | null;
+    if (!el) continue;
+    animate(
+      el,
+      { opacity: [0, 1], transform: ['translateY(12px)', 'translateY(0)'] },
+      { duration: 0.6, delay, easing: [0.22, 1, 0.36, 1] },
+    );
+  }
+</script>

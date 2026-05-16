@@ -1,0 +1,27 @@
+---
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+const links = [
+  { href: '#features', label: '機能' },
+  { href: '#modes',    label: 'モード' },
+  { href: '#tour',     label: 'タブ' },
+  { href: '#install',  label: '入手' },
+  { href: `${base}/specs/`, label: '仕様' },
+];
+---
+
+<nav class="sticky top-0 z-50 backdrop-blur bg-white/70 border-b border-neutral-200/60">
+  <div class="mx-auto max-w-5xl px-6 h-12 flex items-center justify-between">
+    <a href={`${base}/`} class="flex items-center gap-2 text-sm font-medium text-neutral-900">
+      <img src={`${base}/img/icon.png`} alt="" class="h-5 w-5 rounded" />
+      <span class="hidden sm:inline">SCATT Companion</span>
+    </a>
+    <ul class="flex items-center gap-5 text-sm text-neutral-600">
+      {links.map((l) => (
+        <li>
+          <a href={l.href} class="hover:text-neutral-900 transition-colors">{l.label}</a>
+        </li>
+      ))}
+    </ul>
+  </div>
+</nav>

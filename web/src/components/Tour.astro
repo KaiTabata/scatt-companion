@@ -1,0 +1,88 @@
+---
+import Section from './Section.astro';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+// 実アプリ (v0.4.12) のタブ構成順。スクショは img/tour/{key}.png を想定 (撮り直し予定)。
+const tabs = [
+  {
+    key: 'home',
+    name: 'Home',
+    body: '射手 / 種目 / モードを選んで始める。プロフィール切替もここから。',
+  },
+  {
+    key: 'dashboard',
+    name: 'Dashboard',
+    body: '現在の指標を一画面で。モード別の KPI とグラフが既定で並ぶ。撃発時のライブ表示にも対応。',
+  },
+  {
+    key: 'sessions',
+    name: 'Sessions',
+    body: '過去 shot を横断で見る。Overview / 反動 / 銃の傾き / Drift / Spectrum の 5 サブタブで散らばりを観察。',
+  },
+  {
+    key: 'shots',
+    name: 'Shots',
+    body: '10 発 Series ごとのブロック表示。ターゲット + 弾着 + 集計が本家風に並ぶ。Series 単位の PDF 出力。',
+  },
+  {
+    key: 'graphs',
+    name: 'Graphs',
+    body: '30 種以上のグラフ一覧。右クリックで計算式を確認。',
+  },
+  {
+    key: 'level',
+    name: 'Level',
+    body: 'カント角を人工水平器風に。横幅を 1/4 に縮めても崩れないので、SCATT の脇に並べられる。',
+  },
+  {
+    key: 'settings',
+    name: 'Settings',
+    body: '射撃種目 / Live polling / バックアップ / 自動更新。',
+  },
+];
+---
+
+<Section id="tour" title="タブ別ツアー">
+  <div class="space-y-24">
+    {tabs.map((t, i) => (
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+        <div class={i % 2 === 1 ? 'md:order-2' : ''}>
+          <p class="text-xs uppercase tracking-widest text-neutral-400 mb-2">{`タブ ${i + 1}`}</p>
+          <h3 class="text-2xl sm:text-3xl font-display font-semibold tracking-tight text-neutral-950 mb-4">
+            {t.name}
+          </h3>
+          <p class="text-base text-neutral-500 leading-relaxed">{t.body}</p>
+        </div>
+        <div class={i % 2 === 1 ? 'md:order-1' : ''}>
+          <div class="aspect-[16/10] rounded-xl bg-neutral-100 ring-1 ring-neutral-200/60 overflow-hidden">
+            <img
+              src={`${base}/img/tour/${t.key}.png`}
+              alt={`${t.name} タブのスクリーンショット`}
+              class="w-full h-full object-cover"
+              loading="lazy"
+              onerror="this.style.display='none'; this.parentElement.classList.add('placeholder');"
+            />
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+</Section>
+
+<style>
+  .placeholder {
+    background-image: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+  }
+  .placeholder::after {
+    content: '撮影予定';
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #a3a3a3;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+</style>

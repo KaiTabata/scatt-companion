@@ -1,0 +1,44 @@
+---
+import Section from './Section.astro';
+
+const faqs = [
+  {
+    q: 'SCATT Electronics 公式ですか?',
+    a: '違います。Apache License 2.0 の独立プロジェクトで、SCATT が出力する storage.dat を読みに行きます。',
+  },
+  {
+    q: 'Windows でも動きますか?',
+    a: 'v0.4.12 から NSIS インストーラを配布。per-user、管理者権限不要。動作検証は macOS 主体です。',
+  },
+  {
+    q: '射撃種目は?',
+    a: '50m ライフルと 10m エアライフルに対応。ターゲット幾何と 10a / 10b / 9c の判定半径が ISSF 仕様に追従します。',
+  },
+  {
+    q: '心拍計はどうやって使うの?',
+    a: 'Apple Watch + HeartCast、または Polar H10 等の胸ベルトから BLE Heart Rate Profile を受信します。',
+  },
+  {
+    q: 'データを別 PC に移せますか?',
+    a: '本ソフトの補助 DB は ~/Library/Application Support/scatt-companion/ をコピーで移行できます。SCATT 本体の storage.dat は SCATT 本体側で。',
+  },
+  {
+    q: 'クラウドにデータを送りますか?',
+    a: '送りません。すべての処理は手元の Mac / PC で完結します。',
+  },
+];
+---
+
+<Section title="よくある質問" narrow bg="alt">
+  <div class="divide-y divide-neutral-200 border-y border-neutral-200">
+    {faqs.map((f) => (
+      <details class="group py-5">
+        <summary class="flex items-start justify-between gap-4 cursor-pointer list-none text-neutral-900 font-medium">
+          <span>{f.q}</span>
+          <span class="text-neutral-400 group-open:rotate-45 transition-transform text-xl leading-none mt-0.5">+</span>
+        </summary>
+        <p class="mt-3 text-sm text-neutral-500 leading-relaxed">{f.a}</p>
+      </details>
+    ))}
+  </div>
+</Section>

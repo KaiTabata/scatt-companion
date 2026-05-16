@@ -1,0 +1,53 @@
+---
+import Section from './Section.astro';
+
+const items = [
+  {
+    title: 'SCATT 互換指標',
+    body: '10a / 10a-0.5 / 10b / 9c / S1 を本家と同じ命名で。',
+  },
+  {
+    title: '本家にない補助指標',
+    body: '重心 R95、撃発時速度、力み (8-12Hz)、フォロースルー一貫性。',
+  },
+  {
+    title: 'z-score ランキング',
+    body: '過去 shot との偏差を悪い順に並べる。',
+  },
+  {
+    title: '手のふるえと呼吸',
+    body: 'pre-trigger を周波数別に分解 (呼吸 0.15-0.5Hz / 手ふるえ 8-12Hz)。',
+  },
+  {
+    title: '反動の詳細',
+    body: 'peak 振幅、settle time、フォロースルー R95、反動方向の円形 σ。',
+  },
+  {
+    title: '心拍 / HRV',
+    body: 'Apple Watch (HeartCast) や Polar H10 等を BLE で受信。',
+  },
+  {
+    title: '自然言語フィードバック',
+    body: 'LLM なしで動作。所見をローカルで生成。',
+  },
+  {
+    title: 'セッション横断',
+    body: '前半 vs 後半、ベスト vs ワースト、Series 10 発ブロック表示。',
+  },
+  {
+    title: 'ローカル完結',
+    body: 'クラウド送信なし、API キー不要。',
+  },
+];
+---
+
+<Section id="features" title="観察できる指標">
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-10">
+    {items.map((item) => (
+      <div>
+        <h3 class="text-base font-semibold text-neutral-900 mb-1">{item.title}</h3>
+        <p class="text-sm text-neutral-500 leading-relaxed">{item.body}</p>
+      </div>
+    ))}
+  </div>
+</Section>

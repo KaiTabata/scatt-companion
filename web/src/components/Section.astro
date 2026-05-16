@@ -1,0 +1,27 @@
+---
+interface Props {
+  id?: string;
+  title?: string;
+  eyebrow?: string;
+  bg?: 'white' | 'alt';
+  narrow?: boolean;
+}
+
+const { id, title, eyebrow, bg = 'white', narrow = false } = Astro.props;
+const bgClass = bg === 'alt' ? 'bg-neutral-50' : 'bg-white';
+const widthClass = narrow ? 'max-w-3xl' : 'max-w-5xl';
+---
+
+<section id={id} class={`${bgClass} py-24 sm:py-32`}>
+  <div class={`mx-auto ${widthClass} px-6`}>
+    {eyebrow && (
+      <p class="text-xs uppercase tracking-widest text-neutral-400 mb-3">{eyebrow}</p>
+    )}
+    {title && (
+      <h2 class="text-3xl sm:text-4xl font-display font-semibold tracking-tight text-neutral-950 mb-10">
+        {title}
+      </h2>
+    )}
+    <slot />
+  </div>
+</section>

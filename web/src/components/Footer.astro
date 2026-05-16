@@ -1,0 +1,14 @@
+---
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<footer class="border-t border-neutral-200 py-12">
+  <div class="mx-auto max-w-5xl px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-400">
+    <p>SCATT Companion · Apache License 2.0</p>
+    <ul class="flex items-center gap-5">
+      <li><a href="https://github.com/KaiTabata/scatt-companion" class="hover:text-neutral-700 transition-colors">GitHub</a></li>
+      <li><a href={`${base}/specs/`} class="hover:text-neutral-700 transition-colors">仕様</a></li>
+      <li><a href={`${base}/reverse-engineering/`} class="hover:text-neutral-700 transition-colors">RE</a></li>
+    </ul>
+  </div>
+</footer>

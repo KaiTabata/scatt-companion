@@ -1,0 +1,50 @@
+---
+import Section from './Section.astro';
+
+const version = '0.4.12';
+const dmgUrl = `https://github.com/KaiTabata/scatt-companion/releases/download/v${version}/scatt-companion-${version}.dmg`;
+const exeUrl = `https://github.com/KaiTabata/scatt-companion/releases/download/v${version}/SCATT-Companion-Setup-${version}.exe`;
+---
+
+<Section id="install" title="入手" narrow>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-px bg-neutral-200 rounded-2xl overflow-hidden mb-12">
+    <div class="bg-white p-8">
+      <p class="text-xs uppercase tracking-widest text-neutral-400 mb-2">macOS 11+</p>
+      <h3 class="text-lg font-semibold text-neutral-900 mb-1">Mac (DMG)</h3>
+      <p class="text-xs text-neutral-500 mb-5">約 260 MB</p>
+      <a
+        href={dmgUrl}
+        class="inline-block rounded-full bg-neutral-900 text-white px-5 py-2 text-sm font-medium hover:bg-neutral-700 transition"
+      >
+        ダウンロード v{version}
+      </a>
+      <p class="mt-4 text-xs text-neutral-500 leading-relaxed">
+        ad-hoc 署名。初回起動は右クリック → 開く。
+      </p>
+    </div>
+    <div class="bg-white p-8">
+      <p class="text-xs uppercase tracking-widest text-neutral-400 mb-2">Windows 10+</p>
+      <h3 class="text-lg font-semibold text-neutral-900 mb-1">Windows (NSIS)</h3>
+      <p class="text-xs text-neutral-500 mb-5">約 35 MB</p>
+      <a
+        href={exeUrl}
+        class="inline-block rounded-full bg-neutral-900 text-white px-5 py-2 text-sm font-medium hover:bg-neutral-700 transition"
+      >
+        ダウンロード v{version}
+      </a>
+      <p class="mt-4 text-xs text-neutral-500 leading-relaxed">
+        per-user、管理者権限不要。SmartScreen 警告は「詳細情報 → 実行」。
+      </p>
+    </div>
+  </div>
+
+  <details class="border-t border-neutral-200 pt-6">
+    <summary class="cursor-pointer text-sm text-neutral-700 hover:text-neutral-900">
+      ソースからビルドする (上級)
+    </summary>
+    <pre class="mt-4 text-xs bg-neutral-950 text-neutral-200 p-5 rounded-xl overflow-x-auto"><code>git clone https://github.com/KaiTabata/scatt-companion.git
+cd scatt-companion
+make install
+make gui</code></pre>
+  </details>
+</Section>
