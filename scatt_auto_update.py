@@ -1,19 +1,23 @@
-"""自動アップデート機構 (macOS / .app バンドル限定)。
+"""自動アップデート機構 (macOS .app バンドル / Windows NSIS インストーラ)。
 
 起動時に公開 manifest.json を fetch し、新版があればダイアログで通知。
-ユーザーが「今すぐ更新」を選ぶと DMG をテンポラリにダウンロードし、
-自己更新インストーラ (sh スクリプト) を spawn してアプリを終了。
-インストーラが /Applications/ の旧 .app を新版に置き換え、新版を起動する。
+ユーザーが「今すぐ更新」を選ぶと OS 対応のインストーラをテンポラリにダウンロードし、
+自己更新スクリプト (Mac: bash / Win: BAT) を spawn してアプリを終了する。
+スクリプトは親プロセスの終了を待ってから:
+- Mac: DMG をマウントして /Applications/ の旧 .app を新版に置き換え、新版を起動
+- Win: NSIS インストーラ .exe を非サイレント起動 (Finish で自動起動)
 
 依存:
 - PyQt6 (QThread, pyqtSignal)
-- macOS hdiutil / xattr / open
-- Apple Developer Program 未加入のため ad-hoc 署名 + quarantine 強制解除
+- Mac: hdiutil / xattr / open (ad-hoc 署名 + quarantine 強制解除)
+- Win: cmd.exe / tasklist
 
 manifest.json 形式 (docs/manifest.json):
   {
-    "latest_version": "0.4.9",
-    "url": "https://.../scatt-companion-0.4.9.dmg",
+    "latest_version": "0.4.12",
+    "url":     "https://.../scatt-companion-0.4.12.dmg",   # Mac 旧クライアント互換
+    "mac_url": "https://.../scatt-companion-0.4.12.dmg",   # v0.4.12+ Mac 用
+    "win_url": "https://.../SCATT-Companion-Setup-0.4.12.exe",  # v0.4.12+ Win 用
     "notes": "..."
   }
 """
@@ -46,24 +50,53 @@ def parse_version(v: str) -> tuple:
     return tuple(parts) or (0,)
 
 
-def is_bundle_app() -> bool:
-    """py2app バンドルから起動されているかを判定。
+def current_platform() -> str:
+    """実行プラットフォームを返す。
 
-    開発実行 (`python scatt_gui.py`) では自動更新が無意味なので False を返す。
+    "mac" — macOS の py2app バンドル (.app)
+    "win" — Windows の PyInstaller bundled exe
+    "dev" — 上記以外 (生 Python 実行、Linux 等)
     """
     try:
-        exe = os.path.realpath(sys.executable or "")
-        argv0 = os.path.realpath(sys.argv[0] if sys.argv else "")
-        marker = "SCATT Companion.app"
-        return marker in exe or marker in argv0
+        if sys.platform == "darwin":
+            exe = os.path.realpath(sys.executable or "")
+            argv0 = os.path.realpath(sys.argv[0] if sys.argv else "")
+            if "SCATT Companion.app" in exe or "SCATT Companion.app" in argv0:
+                return "mac"
+            return "dev"
+        if sys.platform.startswith("win"):
+            # PyInstaller bundled は frozen=True かつ _MEIPASS 属性を持つ
+            if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+                return "win"
+            return "dev"
     except Exception:
-        return False
+        pass
+    return "dev"
+
+
+def is_bundle_app() -> bool:
+    """bundled (Mac .app / Win PyInstaller) なら True、生 Python 実行なら False。"""
+    return current_platform() in {"mac", "win"}
+
+
+def select_url_for_platform(data: dict, platform: str) -> str:
+    """manifest 辞書から現プラットフォーム用の URL を選ぶ。
+
+    - Win: win_url のみ (旧 `url` は Mac DMG なので fallback 不可)
+    - Mac/dev: mac_url → 旧 `url` の順で fallback
+    """
+    mac_url = str(data.get("mac_url", "")).strip()
+    win_url = str(data.get("win_url", "")).strip()
+    legacy_url = str(data.get("url", "")).strip()
+    if platform == "win":
+        return win_url
+    return mac_url or legacy_url
 
 
 class UpdateChecker(QThread):
     """manifest を fetch して新版有無を通知する QThread。"""
 
-    update_available = pyqtSignal(str, str, str)  # latest_version, dmg_url, notes
+    update_available = pyqtSignal(str, str, str)  # latest_version, installer_url, notes
     no_update = pyqtSignal()
     error = pyqtSignal(str)
 
@@ -81,10 +114,13 @@ class UpdateChecker(QThread):
             with urllib.request.urlopen(req, timeout=10) as r:
                 data = json.loads(r.read().decode("utf-8"))
             latest = str(data.get("latest_version", "")).strip()
-            url = str(data.get("url", "")).strip()
             notes = str(data.get("notes", "")).strip()
-            if not latest or not url:
-                self.error.emit("manifest が不正です (latest_version / url が無い)")
+            url = select_url_for_platform(data, current_platform())
+            if not latest:
+                self.error.emit("manifest が不正です (latest_version が無い)")
+                return
+            if not url:
+                self.error.emit("manifest にこの OS 向けのインストーラ URL がありません")
                 return
             if parse_version(latest) > parse_version(self.current_version):
                 self.update_available.emit(latest, url, notes)
@@ -94,8 +130,14 @@ class UpdateChecker(QThread):
             self.error.emit(f"{type(e).__name__}: {e}")
 
 
+def _local_filename_for_url(url: str, pid: int) -> str:
+    """URL 拡張子からテンポラリのファイル名を決める (.exe / .dmg)。"""
+    ext = ".exe" if url.lower().split("?")[0].endswith(".exe") else ".dmg"
+    return f"scatt-companion-update-{pid}{ext}"
+
+
 class Downloader(QThread):
-    """DMG をテンポラリディレクトリにダウンロードする QThread。
+    """インストーラ (DMG / EXE) をテンポラリディレクトリにダウンロードする QThread。
 
     progress(received, total) を逐次発火、完了時 done(local_path) を 1 回発火。
     cancel() でループを抜けて部分ファイルを削除する。
@@ -117,7 +159,7 @@ class Downloader(QThread):
         local: Path | None = None
         try:
             tmpdir = Path(tempfile.gettempdir())
-            local = tmpdir / f"scatt-companion-update-{os.getpid()}.dmg"
+            local = tmpdir / _local_filename_for_url(self.url, os.getpid())
             req = urllib.request.Request(
                 self.url,
                 headers={"User-Agent": "scatt-companion-updater"},
@@ -150,13 +192,21 @@ class Downloader(QThread):
             self.error.emit(f"{type(e).__name__}: {e}")
 
 
-def install_and_relaunch(dmg_path: str) -> None:
-    """DMG をマウントして /Applications/ に入れ替え、新版を起動する。
+def install_and_relaunch(installer_path: str) -> None:
+    """インストーラを spawn して新版に入れ替え、新版を起動する。
 
-    インストール処理はサブプロセスのシェルスクリプトに委ねる。スクリプトは
-    親プロセス (= 現アプリ) の終了を待ってから動き出すので、本関数を呼んだら
-    すぐに QApplication.quit() してよい。
+    OS によって処理は別物だが、共通点は「親プロセス (= 現アプリ) の終了を待って
+    から動くスクリプトを spawn する」こと。これにより呼び出し側 (scatt_gui) は
+    `install_and_relaunch()` の直後に QApplication.quit() してよい。
     """
+    plat = current_platform()
+    if plat == "win":
+        _install_and_relaunch_win(installer_path)
+    else:
+        _install_and_relaunch_mac(installer_path)
+
+
+def _install_and_relaunch_mac(dmg_path: str) -> None:
     pid = os.getpid()
     tmpdir = Path(tempfile.gettempdir())
     log_path = tmpdir / f"scatt_update_{pid}.log"
@@ -213,4 +263,58 @@ open "/Applications/SCATT Companion.app"
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
+    )
+
+
+def _install_and_relaunch_win(exe_path: str) -> None:
+    """Windows: 親プロセス終了を待って NSIS インストーラを非サイレント起動する BAT を spawn。
+
+    NSIS インストーラの MUI_FINISHPAGE_RUN により Finish ボタンで新版が自動起動する。
+    インストーラ自身と BAT は完了後に自己削除する。
+    """
+    pid = os.getpid()
+    tmpdir = Path(tempfile.gettempdir())
+    log_path = tmpdir / f"scatt_update_{pid}.log"
+    bat_path = tmpdir / f"scatt_update_{pid}.bat"
+
+    # BAT 内で参照するパスは " " で囲んで空白対応。^ などのエスケープは BAT 文法に従う。
+    bat = (
+        "@echo off\r\n"
+        f'set "LOG={log_path}"\r\n'
+        f'set "EXE={exe_path}"\r\n'
+        f'set "PARENT_PID={pid}"\r\n'
+        '> "%LOG%" 2>&1 (\r\n'
+        '  echo waiting for parent %PARENT_PID%\r\n'
+        '  set /a tries=0\r\n'
+        '  :waitloop\r\n'
+        '  tasklist /FI "PID eq %PARENT_PID%" 2>nul | find "%PARENT_PID%" >nul\r\n'
+        '  if errorlevel 1 goto run\r\n'
+        '  set /a tries+=1\r\n'
+        '  if %tries% GEQ 200 goto run\r\n'
+        '  timeout /t 1 /nobreak >nul\r\n'
+        '  goto waitloop\r\n'
+        '  :run\r\n'
+        '  echo launching installer\r\n'
+        '  "%EXE%"\r\n'
+        '  echo installer exited %errorlevel%\r\n'
+        '  del "%EXE%"\r\n'
+        ')\r\n'
+        '(goto) 2>nul & del "%~f0"\r\n'
+    )
+
+    # Windows コンソール BAT は CP932 (Shift-JIS) で書き出すのが無難。
+    # 内容は ASCII のみなので utf-8 でも動くが、安全策として cp932 で。
+    bat_path.write_text(bat, encoding="cp932", errors="replace")
+
+    # Windows: DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP で親と切り離す
+    DETACHED_PROCESS = 0x00000008
+    CREATE_NEW_PROCESS_GROUP = 0x00000200
+    flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen(
+        ["cmd.exe", "/c", str(bat_path)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=flags,
+        close_fds=True,
     )

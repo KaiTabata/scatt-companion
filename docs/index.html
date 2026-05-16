@@ -37,7 +37,8 @@
       50m ライフル / 10m エアライフルに対応。ローカル動作・オフライン完結。
     </p>
     <div class="hero-cta">
-      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.11/scatt-companion-0.4.11.dmg">DMG をダウンロード (v0.4.11)</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.12/scatt-companion-0.4.12.dmg">Mac (DMG) をダウンロード (v0.4.12)</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.12/SCATT-Companion-Setup-0.4.12.exe">Windows (.exe) をダウンロード (v0.4.12)</a>
       <a class="btn secondary" href="#install">インストール手順</a>
       <a class="btn secondary" href="https://github.com/KaiTabata/scatt-analyzer" target="_blank" rel="noopener">GitHub</a>
     </div>
@@ -234,18 +235,29 @@
 <section id="install" class="section bg-alt">
   <div class="container">
     <h2>インストール</h2>
-    <h3>方法 A: DMG ダウンロード (推奨)</h3>
+    <h3>方法 A: Mac (DMG ダウンロード)</h3>
     <p>
-      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.11/scatt-companion-0.4.11.dmg">scatt-companion-0.4.11.dmg (約 260MB)</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.12/scatt-companion-0.4.12.dmg">scatt-companion-0.4.12.dmg (約 260MB)</a>
     </p>
     <ol>
       <li>DMG をダブルクリックで開く</li>
       <li><code>SCATT Companion.app</code> を <code>Applications</code> フォルダにドラッグ</li>
       <li>初回起動は Applications フォルダで <strong>右クリック → 開く</strong>(Gatekeeper 警告に「開く」で進む)</li>
     </ol>
-    <p>署名は ad-hoc(Apple Developer Program 未加入のため公証なし)。気になる場合は方法 B のソースビルドが選べます。</p>
+    <p>署名は ad-hoc(Apple Developer Program 未加入のため公証なし)。気になる場合は方法 C のソースビルドが選べます。</p>
 
-    <h3>方法 B: git clone (ソースから)</h3>
+    <h3>方法 B: Windows (NSIS インストーラ)</h3>
+    <p>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.12/SCATT-Companion-Setup-0.4.12.exe">SCATT-Companion-Setup-0.4.12.exe (約 35MB)</a>
+    </p>
+    <ol>
+      <li>.exe をダブルクリックで起動</li>
+      <li>SmartScreen 警告が出たら「詳細情報 → 実行」(コード署名なしのため。気になる場合はソースビルド)</li>
+      <li>per-user インストール (管理者権限不要)、デフォルトは <code>%LOCALAPPDATA%\Programs\SCATT Companion\</code></li>
+    </ol>
+    <p>動作検証は macOS 主体。Windows 環境では未検証の機能もある旨ご了承ください。</p>
+
+    <h3>方法 C: git clone (ソースから)</h3>
     <pre><code># 前提: macOS, Homebrew, Python 3.10+
 brew install python@3.10
 git clone https://github.com/KaiTabata/scatt-analyzer.git
@@ -308,7 +320,7 @@ make test      # pytest で単体テスト</code></pre>
     </details>
     <details>
       <summary>Windows でも動きますか?</summary>
-      <p>本体の Python コードはマルチプラットフォームですが、検証は macOS のみ。<code>caffeinate</code> や Launcher (.command) は macOS 専用です。Windows 対応は今のところ予定なし。</p>
+      <p>v0.4.12 から <strong>Windows 版 NSIS インストーラ</strong>を配布開始 (per-user、管理者権限不要)。アプリ内自動アップデートも対応。ただし動作検証は macOS 主体で、<code>caffeinate</code> 連携など一部 macOS 専用機能があります。</p>
     </details>
     <details>
       <summary>Apple Watch の心拍をどうやって受けるの?</summary>

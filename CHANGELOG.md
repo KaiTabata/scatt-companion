@@ -3,6 +3,17 @@
 すべての変更点は [Keep a Changelog](https://keepachangelog.com/) 形式に倣う。
 バージョニングは [Semantic Versioning](https://semver.org/) ベース。
 
+## [0.4.12] — 2026-05-16
+
+### Added
+- **Windows の自動アップデート対応**: `scatt_auto_update.py` を OS 別分岐に拡張。PyInstaller bundled exe を判定 (`sys.frozen` + `_MEIPASS`)、`win_url` で配布された NSIS インストーラ `.exe` をテンポラリに DL、親プロセス終了を待つ BAT 経由で非サイレント起動して新版に置き換える
+- **manifest.json の OS 別 URL**: 新フィールド `mac_url` / `win_url` を追加 (旧 `url` は Mac fallback として残し v0.4.11 Mac クライアントとも互換)
+- **Web ダウンロードページに Windows .exe ボタンを追加** (`docs/index.html`)
+
+### Changed
+- 自動アップデートの進捗ダイアログ表記を「DMG をダウンロード中」→「インストーラをダウンロード中」に汎用化
+- 旧 FAQ「Windows 対応は予定なし」を「Windows インストーラ配布あり / 検証は macOS 主体」に更新
+
 ## [0.4.11] — 2026-05-16
 
 ### Fixed

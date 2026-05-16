@@ -64,7 +64,7 @@ import scatt_level_tab as LV
 import scatt_i18n as I18N
 from scatt_i18n import t as _t
 
-VERSION = "0.4.11"
+VERSION = "0.4.12"
 
 
 DEFAULT_DB = PATHS.DEFAULT_SCATT_STORAGE
@@ -7319,7 +7319,7 @@ class MainWindow(QMainWindow):
 
     def _start_update_download(self, url: str, version: str):
         self._upd_progress = QProgressDialog(
-            f"v{version} の DMG をダウンロード中...", "キャンセル", 0, 100, self
+            f"v{version} のインストーラをダウンロード中...", "キャンセル", 0, 100, self
         )
         self._upd_progress.setWindowTitle("アップデートをダウンロード")
         self._upd_progress.setMinimumDuration(0)
@@ -7335,12 +7335,12 @@ class MainWindow(QMainWindow):
                 mb_r = received / (1024 * 1024)
                 mb_t = total / (1024 * 1024)
                 self._upd_progress.setLabelText(
-                    f"v{version} の DMG をダウンロード中... ({mb_r:.1f} / {mb_t:.1f} MB)"
+                    f"v{version} のインストーラをダウンロード中... ({mb_r:.1f} / {mb_t:.1f} MB)"
                 )
             else:
                 mb_r = received / (1024 * 1024)
                 self._upd_progress.setLabelText(
-                    f"v{version} の DMG をダウンロード中... ({mb_r:.1f} MB)"
+                    f"v{version} のインストーラをダウンロード中... ({mb_r:.1f} MB)"
                 )
 
         def _on_error(msg: str):

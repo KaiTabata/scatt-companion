@@ -30,8 +30,8 @@ OPTIONS = {
         "CFBundleName": APP_NAME,
         "CFBundleDisplayName": APP_NAME,
         "CFBundleIdentifier": "com.scatt-companion.app",
-        "CFBundleVersion": "0.4.11",
-        "CFBundleShortVersionString": "0.4.11",
+        "CFBundleVersion": "0.4.12",
+        "CFBundleShortVersionString": "0.4.12",
         "NSHumanReadableCopyright": "Apache License 2.0",
         # macOS 権限の説明
         "NSBluetoothAlwaysUsageDescription":

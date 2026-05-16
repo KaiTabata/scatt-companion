@@ -1,10 +1,10 @@
 ; SCATT Companion — Windows インストーラ (NSIS)
 ; 使い方:
-;   makensis /DAPP_VERSION=0.4.10 build_windows.nsi
-;   → dist/SCATT-Companion-Setup-0.4.10.exe
+;   makensis /DAPP_VERSION=0.4.12 build_windows.nsi
+;   → dist/SCATT-Companion-Setup-0.4.12.exe
 
 !ifndef APP_VERSION
-  !define APP_VERSION "0.4.10"
+  !define APP_VERSION "0.4.12"
 !endif
 !define APP_NAME    "SCATT Companion"
 !define PUBLISHER   "Kai Tabata"
