@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import tailwindcss from '@tailwindcss/vite';
+import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
   // ビルド出力先: ../docs (GitHub Pages が docs/ を配信)
@@ -12,6 +13,8 @@ export default defineConfig({
   base: '/scatt-companion',
 
   trailingSlash: 'ignore',
+
+  integrations: [sitemap()],
 
   vite: {
     plugins: [tailwindcss()],

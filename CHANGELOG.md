@@ -8,11 +8,19 @@
 ### Added
 - **Windows の自動アップデート対応**: `scatt_auto_update.py` を OS 別分岐に拡張。PyInstaller bundled exe を判定 (`sys.frozen` + `_MEIPASS`)、`win_url` で配布された NSIS インストーラ `.exe` をテンポラリに DL、親プロセス終了を待つ BAT 経由で非サイレント起動して新版に置き換える
 - **manifest.json の OS 別 URL**: 新フィールド `mac_url` / `win_url` を追加 (旧 `url` は Mac fallback として残し v0.4.11 Mac クライアントとも互換)
-- **Web ダウンロードページに Windows .exe ボタンを追加** (`docs/index.html`)
+- **`scatt_gui.py --screenshot-tour=DIR`** フラグ: 全タブを順に切替えて `QWidget.grab()` で PNG 保存して終了。Accessibility 権限なしで紹介ページ用スクショを自動生成
 
 ### Changed
 - 自動アップデートの進捗ダイアログ表記を「DMG をダウンロード中」→「インストーラをダウンロード中」に汎用化
-- 旧 FAQ「Windows 対応は予定なし」を「Windows インストーラ配布あり / 検証は macOS 主体」に更新
+
+### Web / Branding
+- **リポジトリ rename**: `scatt-analyzer` → `scatt-companion` (URL / Git / GitHub Pages 全て移行、旧 URL は GitHub の自動 redirect で当面動く)
+- **紹介サイトを Astro 5 + Tailwind v4 + Motion に全面リニューアル**: 旧 `style.css` ベースの 4 ページを Astro 化、index / specs / reverse-engineering / metrics-investigation。Nav と Footer を共有、システムフォントベースの控えめタイポ、Motion で控えめなフェードイン
+- **タブ別ツアー**: 実アプリ (v0.4.12) のタブ構成 + `--screenshot-tour` で撮ったスクショに刷新
+- **18 秒モーショングラフィック PV** (Remotion CinematicPV) をヒーローに採用: 3 shot × 3 グラフ (Velocity / Spectrum / Distance) を順に切替、LIVE HUD で S1 / R95 / 10a-0.5 がリアルタイムに更新
+- **OG 画像 / Twitter Card** を全ページに追加 (`og.png` は CinematicPV の still)
+- **sitemap.xml** を `@astrojs/sitemap` で自動生成、`robots.txt` も追加
+- **`.nojekyll`** を `docs/` に配置 (GitHub Pages の Jekyll が `_astro/` を無視する問題の修正)
 
 ## [0.4.11] — 2026-05-16
 
