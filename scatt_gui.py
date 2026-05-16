@@ -6185,9 +6185,12 @@ class MainWindow(QMainWindow):
             return sa
 
         self._tab_wrap: dict = {}
+        # tab key (snake-case) を後で screenshot 等で参照するため保持
+        self._tab_keys: dict = {}
         # ホームタブ
         home_wrap = _wrap(self.home_tab)
         self._tab_wrap[self.home_tab] = home_wrap
+        self._tab_keys[home_wrap] = "home"
         self.tabs.addTab(home_wrap, _t("tab.home"))
         # 表示する tab を SETTINGS から
         tab_defs = [
@@ -6203,9 +6206,11 @@ class MainWindow(QMainWindow):
                 continue
             ww = _wrap(w) if need_wrap else w
             self._tab_wrap[w] = ww
+            self._tab_keys[ww] = key
             self.tabs.addTab(ww, label)
         # Settings タブは常時表示 (内部に scroll 既存)
         self._tab_wrap[self.settings_tab] = self.settings_tab
+        self._tab_keys[self.settings_tab] = "settings"
         self.tabs.addTab(self.settings_tab, _t("tab.settings"))
         self._pending_trace_for_tabs = None  # 未使用 (互換のため残置)
         self._latest_secondary: dict | None = None
@@ -7366,6 +7371,39 @@ class MainWindow(QMainWindow):
         AUTOUPD.install_and_relaunch(local_path)
         QApplication.instance().quit()
 
+    # ----- スクリーンショット ツアー (CLI: --screenshot-tour DIR) -----
+
+    def screenshot_tour(self, out_dir):
+        """全タブを順に切替てスクショ保存し、完了後に QApplication.quit() する。
+
+        ファイル名は タブ key (snake-case) + .png。順序は QTabWidget の現在順。
+        各タブ切替後 800ms 待って描画を確定させてから grab する。
+        """
+        from pathlib import Path as _Path
+        out = _Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        self._screenshot_dir = out
+        QTimer.singleShot(600, lambda: self._screenshot_step(0))
+
+    def _screenshot_step(self, idx: int):
+        if idx >= self.tabs.count():
+            LOG.info(f"screenshot tour complete: {self._screenshot_dir}")
+            QApplication.instance().quit()
+            return
+        self.tabs.setCurrentIndex(idx)
+        QApplication.processEvents()
+
+        def _grab():
+            widget = self.tabs.widget(idx)
+            key = self._tab_keys.get(widget, f"tab_{idx}")
+            pix = widget.grab()
+            path = self._screenshot_dir / f"{key}.png"
+            ok = pix.save(str(path), "PNG")
+            LOG.info(f"screenshot {idx}: {key} → {path} (ok={ok})")
+            QTimer.singleShot(300, lambda: self._screenshot_step(idx + 1))
+
+        QTimer.singleShot(800, _grab)
+
     def closeEvent(self, e):
         try:
             SETTINGS.set("window/geometry", self.saveGeometry())
@@ -7408,6 +7446,8 @@ def main():
     ap.add_argument("--no-top", action="store_true", help="今回のみ最前面 OFF")
     ap.add_argument("--no-caffeinate", action="store_true",
                     help="今回のみスリープ抑制を OFF")
+    ap.add_argument("--screenshot-tour", metavar="DIR",
+                    help="全タブを順にスクショして DIR に保存し終了 (Web 紹介ページ用)")
     args = ap.parse_args()
     if not os.path.exists(args.db):
         LOG.error(f"db not found: {args.db}", exc_info=False)
@@ -7429,8 +7469,19 @@ def main():
     if args.no_top: on_top = False
     caffeinate = SETTINGS.get("behavior/caffeinate") and not args.no_caffeinate
 
-    if caffeinate:
+    if caffeinate and not args.screenshot_tour:
         _start_caffeinate()
+
+    # スクショ撮影モード: Level / Help タブも一時的に ON にして全タブを撮る。
+    # 撮影後に元の設定に戻すため、ここで snapshot を取る。
+    _shot_orig_settings = None
+    if args.screenshot_tour:
+        _shot_orig_settings = {
+            "tabs/level": SETTINGS.get("tabs/level"),
+            "tabs/help":  SETTINGS.get("tabs/help"),
+        }
+        SETTINGS.set("tabs/level", True)
+        SETTINGS.set("tabs/help",  True)
 
     app = QApplication(sys.argv)
     app.setApplicationName("SCATT Companion")
@@ -7452,6 +7503,19 @@ def main():
     w = MainWindow(args.db, auto_live=auto_live, initial_trace=args.trace)
     if on_top:
         w.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+
+    if args.screenshot_tour:
+        # 紹介ページ用に固定アスペクトでリサイズ → 全タブ撮影 → 終了
+        w.resize(1400, 900)
+        w.show()
+        w.screenshot_tour(args.screenshot_tour)
+        rc = app.exec()
+        # 元の設定に戻す
+        if _shot_orig_settings is not None:
+            for k, v in _shot_orig_settings.items():
+                SETTINGS.set(k, v)
+        sys.exit(rc)
+
     w.show()
     # ホームタブを自動フォーカス (条件付き) — 初回起動 or 複数 profile
     if HOME.should_auto_focus(SETTINGS, PROFILES):

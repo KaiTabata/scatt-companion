@@ -5,7 +5,8 @@
   "scripts": {
     "start": "remotion preview src/index.ts",
     "build:pv": "remotion render src/index.ts MarketingPV out/scatt-companion-pv.mp4",
-    "build:demo": "remotion render src/index.ts WebsiteDemo out/scatt-companion-demo.mp4"
+    "build:demo": "remotion render src/index.ts WebsiteDemo out/scatt-companion-demo.mp4",
+    "build:cinematic": "remotion render src/index.ts CinematicPV out/scatt-companion-pv-v2.mp4"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.0",
