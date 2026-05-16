@@ -136,7 +136,7 @@ const Outro: React.FC = () => {
         SCATT Companion
       </h1>
       <p style={{ fontSize: 26, color: "#9aa3b2", margin: "6px 0" }}>
-        kaitabata.github.io/scatt-analyzer
+        kaitabata.github.io/scatt-companion
       </p>
       <div style={{ display: "flex", gap: 16, marginTop: 22 }}>
         {["Apache 2.0", "macOS 11+", "DMG 配布"].map((t) => (

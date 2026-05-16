@@ -101,7 +101,7 @@ const Outro: React.FC = () => {
       </h1>
       <p style={{ fontSize: 28, color: "#9aa3b2", margin: "4px 0",
                   fontFamily: "-apple-system, monospace" }}>
-        kaitabata.github.io/scatt-analyzer
+        kaitabata.github.io/scatt-companion
       </p>
       <p style={{ fontSize: 16, color: "#5a6170", marginTop: 12,
                   fontFamily: "-apple-system, 'Hiragino Sans', sans-serif" }}>

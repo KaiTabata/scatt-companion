@@ -36,7 +36,7 @@ from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
 
 
-DEFAULT_MANIFEST_URL = "https://kaitabata.github.io/scatt-analyzer/manifest.json"
+DEFAULT_MANIFEST_URL = "https://kaitabata.github.io/scatt-companion/manifest.json"
 
 
 def parse_version(v: str) -> tuple:

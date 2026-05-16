@@ -1,7 +1,7 @@
 {
   "latest_version": "0.4.12",
-  "url":     "https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.12/scatt-companion-0.4.12.dmg",
-  "mac_url": "https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.12/scatt-companion-0.4.12.dmg",
-  "win_url": "https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.12/SCATT-Companion-Setup-0.4.12.exe",
+  "url":     "https://github.com/KaiTabata/scatt-companion/releases/download/v0.4.12/scatt-companion-0.4.12.dmg",
+  "mac_url": "https://github.com/KaiTabata/scatt-companion/releases/download/v0.4.12/scatt-companion-0.4.12.dmg",
+  "win_url": "https://github.com/KaiTabata/scatt-companion/releases/download/v0.4.12/SCATT-Companion-Setup-0.4.12.exe",
   "notes": "v0.4.12 — Windows 自動アップデート対応。NSIS インストーラ配布。manifest.json を OS 別 URL に拡張 (mac_url / win_url)。"
 }

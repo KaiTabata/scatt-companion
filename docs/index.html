@@ -26,21 +26,21 @@
       <a href="#install">インストール</a>
       <a href="specs.html">仕様詳細</a>
       <a href="reverse-engineering.html">RE</a>
-      <a href="https://github.com/KaiTabata/scatt-analyzer" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/KaiTabata/scatt-companion" target="_blank" rel="noopener">GitHub</a>
     </div>
   </nav>
   <div class="hero-inner">
     <img src="img/icon.png" alt="" class="hero-icon">
-    <h1>SCATT Expert に<br>並べて使う、伏射 / 立射対応の分析ツール</h1>
+    <h1>SCATT COMPANION</h1>
     <p class="hero-sub">
       本家にない手のふるえ・呼吸 FFT、反動詳細、銃の傾き統計、心拍 / HRV、自然言語フィードバック。<br>
       50m ライフル / 10m エアライフルに対応。ローカル動作・オフライン完結。
     </p>
     <div class="hero-cta">
-      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.12/scatt-companion-0.4.12.dmg">Mac (DMG) をダウンロード (v0.4.12)</a>
-      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.12/SCATT-Companion-Setup-0.4.12.exe">Windows (.exe) をダウンロード (v0.4.12)</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-companion/releases/download/v0.4.12/scatt-companion-0.4.12.dmg">Mac (DMG) をダウンロード (v0.4.12)</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-companion/releases/download/v0.4.12/SCATT-Companion-Setup-0.4.12.exe">Windows (.exe) をダウンロード (v0.4.12)</a>
       <a class="btn secondary" href="#install">インストール手順</a>
-      <a class="btn secondary" href="https://github.com/KaiTabata/scatt-analyzer" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn secondary" href="https://github.com/KaiTabata/scatt-companion" target="_blank" rel="noopener">GitHub</a>
     </div>
     <p class="hero-note">SCATT Electronics 公式ではありません。Apache License 2.0。</p>
   </div>
@@ -237,7 +237,7 @@
     <h2>インストール</h2>
     <h3>方法 A: Mac (DMG ダウンロード)</h3>
     <p>
-      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.12/scatt-companion-0.4.12.dmg">scatt-companion-0.4.12.dmg (約 260MB)</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-companion/releases/download/v0.4.12/scatt-companion-0.4.12.dmg">scatt-companion-0.4.12.dmg (約 260MB)</a>
     </p>
     <ol>
       <li>DMG をダブルクリックで開く</li>
@@ -248,7 +248,7 @@
 
     <h3>方法 B: Windows (NSIS インストーラ)</h3>
     <p>
-      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.12/SCATT-Companion-Setup-0.4.12.exe">SCATT-Companion-Setup-0.4.12.exe (約 35MB)</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-companion/releases/download/v0.4.12/SCATT-Companion-Setup-0.4.12.exe">SCATT-Companion-Setup-0.4.12.exe (約 35MB)</a>
     </p>
     <ol>
       <li>.exe をダブルクリックで起動</li>
@@ -260,8 +260,8 @@
     <h3>方法 C: git clone (ソースから)</h3>
     <pre><code># 前提: macOS, Homebrew, Python 3.10+
 brew install python@3.10
-git clone https://github.com/KaiTabata/scatt-analyzer.git
-cd scatt-analyzer
+git clone https://github.com/KaiTabata/scatt-companion.git
+cd scatt-companion
 make install   # PyQt6, numpy, pyqtgraph, bleak をインストール
 make gui       # GUI 起動 (Finder からは scatt-gui.command をダブルクリックでも可)
 make test      # pytest で単体テスト</code></pre>
@@ -336,7 +336,7 @@ make test      # pytest で単体テスト</code></pre>
 <footer class="footer">
   <div class="container">
     <p>SCATT Companion · Apache License 2.0 ·
-      <a href="https://github.com/KaiTabata/scatt-analyzer">GitHub</a> ·
+      <a href="https://github.com/KaiTabata/scatt-companion">GitHub</a> ·
       <a href="reverse-engineering.html">RE 解説</a> ·
       <a href="scatt-metrics-investigation.html">指標 調査ノート</a> ·
       <a href="specs.html">仕様詳細</a>

@@ -1,6 +1,6 @@
 # GitHub Pages 用紹介サイト
 
-このディレクトリは GitHub Pages 配信用。`docs/` フォルダがそのまま `https://kaitabata.github.io/scatt-analyzer/` で公開される設定。
+このディレクトリは GitHub Pages 配信用。`docs/` フォルダがそのまま `https://kaitabata.github.io/scatt-companion/` で公開される設定。
 
 ## ローカル確認
 
@@ -20,7 +20,7 @@ cd docs
 2. GitHub Pages を有効化(repo Settings → Pages):
    - Source: **Deploy from a branch**
    - Branch: **main**, Folder: **/docs**
-3. 数分後に `https://kaitabata.github.io/scatt-analyzer/` で公開
+3. 数分後に `https://kaitabata.github.io/scatt-companion/` で公開
 
 ## スクショの差し替え
 

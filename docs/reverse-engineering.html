@@ -70,7 +70,7 @@
     </div>
     <div class="nav-links">
       <a href="index.html">トップ</a>
-      <a href="https://github.com/KaiTabata/scatt-analyzer" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/KaiTabata/scatt-companion" target="_blank" rel="noopener">GitHub</a>
     </div>
   </nav>
   <div class="hero-inner" style="padding-top: 36px;">
@@ -255,7 +255,7 @@ def decode_trace(blob: bytes):
         for i in range(n)
     ]</code></pre>
     <p>
-      これがリポジトリ <a href="https://github.com/KaiTabata/scatt-analyzer/blob/main/scatt_gui.py"><code>scatt_gui.py</code></a>
+      これがリポジトリ <a href="https://github.com/KaiTabata/scatt-companion/blob/main/scatt_gui.py"><code>scatt_gui.py</code></a>
       の <code>decode_trace()</code> として実装されている関数の全文(コメントを追加した版)。
       14 行ほどでフォーマット全体を再現できる。
     </p>
@@ -302,8 +302,8 @@ def decode_trace(blob: bytes):
 
     <h2>付録: 試したい人へ</h2>
     <p>もし手元の SCATT Expert データで試したい場合 (macOS):</p>
-    <pre><code>git clone https://github.com/KaiTabata/scatt-analyzer.git
-cd scatt-analyzer
+    <pre><code>git clone https://github.com/KaiTabata/scatt-companion.git
+cd scatt-companion
 make install   # PyQt6, numpy, pyqtgraph, bleak
 python3 -c "
 import sqlite3, struct, zlib
@@ -323,7 +323,7 @@ blob = conn.execute('SELECT data FROM traces LIMIT 1').fetchone()[0]
 
 <footer class="footer">
   <div class="container">
-    <p>SCATT Companion · Apache License 2.0 · <a href="index.html">紹介ページ</a> · <a href="specs.html">仕様詳細</a> · <a href="https://github.com/KaiTabata/scatt-analyzer">GitHub</a></p>
+    <p>SCATT Companion · Apache License 2.0 · <a href="index.html">紹介ページ</a> · <a href="specs.html">仕様詳細</a> · <a href="https://github.com/KaiTabata/scatt-companion">GitHub</a></p>
     <p class="small">開発: <b>Kai Tabata</b> + <b>Claude Opus 4.7</b></p>
     <p class="small">SCATT, SCATT Expert は SCATT Electronics の商標です。本ソフトは同社の公式ではない非公式の補助ツールです。</p>
   </div>

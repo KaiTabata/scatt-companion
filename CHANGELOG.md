@@ -154,7 +154,7 @@
   - 表示モード: 自動 (複数射手 or 初回のみ) / 毎回 / 表示しない (Settings から切替)
   - 「次回からこの画面を表示しない」チェックで即時 OFF
   - 最近のセッション行をダブルクリックでそのセッションへ直接ジャンプ
-- **紹介ページのスクリーンショット**: GitHub Pages (https://kaitabata.github.io/scatt-analyzer/) に Dashboard / Sessions サブタブ 5 種 / Shots を掲載
+- **紹介ページのスクリーンショット**: GitHub Pages (https://kaitabata.github.io/scatt-companion/) に Dashboard / Sessions サブタブ 5 種 / Shots を掲載
 - **配布パス完成**: `make install-local` で /Applications/ への上書きインストール、`make dmg` で DMG 生成、GitHub Release v0.3.0 に DMG (157MB) を添付
 - **OS 別パス抽象化** (`scatt_paths.py`): macOS / Windows / Linux でアプリ永続データ・ログ・SCATT 保存先を分岐。Windows 移植の下地
 

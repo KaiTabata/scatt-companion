@@ -42,8 +42,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/KaiTabata/scatt-analyzer"
-Issues = "https://github.com/KaiTabata/scatt-analyzer/issues"
+Homepage = "https://github.com/KaiTabata/scatt-companion"
+Issues = "https://github.com/KaiTabata/scatt-companion/issues"
 
 [project.scripts]
 scatt-gui = "scatt_gui:main"

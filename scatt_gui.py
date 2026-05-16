@@ -144,7 +144,7 @@ class S:
         # rifle_50m (default) | rifle_10m
         "discipline": "rifle_50m",
         # 更新通知 (公開 manifest URL を取得して比較)
-        # デフォルトは scatt-analyzer GitHub Pages の manifest を指す
+        # デフォルトは scatt-companion GitHub Pages の manifest を指す
         "update/manifest_url": AUTOUPD.DEFAULT_MANIFEST_URL,
         "update/auto_check": True,
         # ユーザーが「このバージョンをスキップ」を選んだ場合、その latest_version をここに記録
@@ -4926,7 +4926,7 @@ def show_about_dialog(parent=None):
         f"<p>{_t('about.disclaimer')}</p>"
         f"<p>{_t('about.developer')}</p>"
         f"<p><b>{_t('about.repository')}:</b> "
-        f"<a href='https://github.com/KaiTabata/scatt-analyzer'>github.com/KaiTabata/scatt-analyzer</a><br>"
+        f"<a href='https://github.com/KaiTabata/scatt-companion'>github.com/KaiTabata/scatt-companion</a><br>"
         f"<b>{_t('about.license_label')}:</b> Apache License 2.0<br>"
         f"<b>{_t('about.log_label')}:</b> {LOG.LOG_FILE}<br>"
         f"<b>{_t('about.data_label')}:</b> ~/Library/Application Support/scatt-companion/extra.db</p>"
