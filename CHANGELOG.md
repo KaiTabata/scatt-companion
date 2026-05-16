@@ -3,6 +3,22 @@
 すべての変更点は [Keep a Changelog](https://keepachangelog.com/) 形式に倣う。
 バージョニングは [Semantic Versioning](https://semver.org/) ベース。
 
+## [0.4.10] — 2026-05-16
+
+### Added
+- **水準器 (Level) タブ** — カント角を人工水平器風に可視化
+  - 円形ベゼル内で水平線がカント角ぶん傾く (閾値色で着色、中央に固定マーカー)
+  - 数字は計器下に控えめサイズ、shot ラベル / トレンド / 統計を併記
+  - 直近 30 秒 (settings で 5〜120 秒) のライブトレンドグラフ
+  - 接続状態ドット (Live / 停止中)、session 切替で shot 統計リセット
+- **Settings に "Level" セクション** — 緑判定 (±°)、黄判定 (±°)、トレンド秒数
+
+### Changed
+- **全タブが横方向に自由にリサイズ可能** に — MainWindow 最小幅 1091px → 237px
+  - Dashboard / グラフ / Sessions / Shots / ホーム を QScrollArea で包み、内部要素の min が外に出ないよう変更
+  - ステータスバーのヒントラベルが横を引っ張らないよう SizePolicy 調整
+  - 水準器タブは内部レイアウトが幅に応じて段階的に調整 (画面 1/4 幅でも崩れない)
+
 ## [0.4.9] — 2026-05-15
 
 ### Added

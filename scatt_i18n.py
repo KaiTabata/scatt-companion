@@ -31,6 +31,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "tab.shots":      {"ja": "Shots",      "en": "Shots"},
     "tab.help":       {"ja": "Help",       "en": "Help"},
     "tab.graphs":     {"ja": "グラフ",     "en": "Graphs"},
+    "tab.level":      {"ja": "水準器",     "en": "Level"},
     "tab.settings":   {"ja": "Settings",   "en": "Settings"},
     # サブタブ
     "subtab.overview": {"ja": "Overview", "en": "Overview"},

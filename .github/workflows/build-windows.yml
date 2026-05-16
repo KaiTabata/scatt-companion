@@ -1,0 +1,92 @@
+name: Build Windows Installer
+
+on:
+  # 手動トリガー (Actions タブから実行)
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "ビルドするバージョン (空なら pyproject.toml から取得)"
+        required: false
+        default: ""
+  # タグ push 時 (例: v0.4.10)
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [[ -n "${{ github.event.inputs.version }}" ]]; then
+            V="${{ github.event.inputs.version }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            V="${GITHUB_REF##refs/tags/v}"
+          else
+            V=$(python -c "import re; print(re.search(r'version *= *\"([^\"]+)\"', open('pyproject.toml').read()).group(1))")
+          fi
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+          echo "Building version ${V}"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller==6.11.1 pillow
+          pip install -r requirements.txt
+
+      - name: Generate Windows icon (icon.ico)
+        shell: python
+        run: |
+          from PIL import Image
+          import pathlib
+          src = pathlib.Path("assets/icon.png")
+          dst = pathlib.Path("assets/icon.ico")
+          img = Image.open(src)
+          sizes = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+          img.save(dst, sizes=sizes)
+          print(f"wrote {dst}")
+
+      - name: Run PyInstaller
+        run: pyinstaller scatt_companion.spec --clean --noconfirm
+
+      - name: Verify build output
+        shell: bash
+        run: |
+          ls -la "dist/SCATT Companion/"
+          test -f "dist/SCATT Companion/SCATT Companion.exe" || (echo "exe missing"; exit 1)
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Build installer
+        run: |
+          & "C:\Program Files (x86)\NSIS\makensis.exe" /DAPP_VERSION=${{ steps.ver.outputs.version }} build_windows.nsi
+
+      - name: Show artifacts
+        shell: bash
+        run: ls -la dist/
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SCATT-Companion-Setup-${{ steps.ver.outputs.version }}
+          path: dist/SCATT-Companion-Setup-*.exe
+          if-no-files-found: error
+
+      - name: Attach to Release (tag push のみ)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/SCATT-Companion-Setup-*.exe

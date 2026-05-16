@@ -1,5 +1,5 @@
 {
-  "latest_version": "0.4.9",
-  "url": "https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.9/scatt-companion-0.4.9.dmg",
-  "notes": "v0.4.9 — アプリ内自動アップデート機能を追加。次回以降のリリースは「今すぐ更新」ボタンで自動適用されます。"
+  "latest_version": "0.4.10",
+  "url": "https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.10/scatt-companion-0.4.10.dmg",
+  "notes": "v0.4.10 — 水準器 (Level) タブを追加 (人工水平器風カント表示)。全タブが横方向に自由にリサイズ可能 (最小幅 1091→237px)。"
 }

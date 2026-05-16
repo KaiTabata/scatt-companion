@@ -37,7 +37,7 @@ from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFormLayout,
     QFrame, QGraphicsPathItem, QGraphicsScene, QGraphicsView, QHBoxLayout,
     QHeaderView, QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox,
-    QProgressDialog, QPushButton, QScrollArea, QSpinBox, QSplitter, QStatusBar,
+    QProgressDialog, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter, QStatusBar,
     QStyledItemDelegate, QTableWidget, QTableWidgetItem, QTabWidget,
     QTextBrowser, QToolBar, QVBoxLayout, QGridLayout, QWidget,
 )
@@ -60,10 +60,11 @@ import scatt_home as HOME
 import scatt_paths as PATHS
 import scatt_metric_docs as DOCS
 import scatt_modes as MODES
+import scatt_level_tab as LV
 import scatt_i18n as I18N
 from scatt_i18n import t as _t
 
-VERSION = "0.4.9"
+VERSION = "0.4.10"
 
 
 DEFAULT_DB = PATHS.DEFAULT_SCATT_STORAGE
@@ -127,6 +128,11 @@ class S:
         "tabs/target": True,
         "tabs/help": True,
         "tabs/graphs": True,
+        "tabs/level": True,
+        # 水準器 (Level) タブ — カント可視化
+        "level/threshold_green": 1.0,    # ±この角度以内は緑
+        "level/threshold_yellow": 3.0,   # ±この角度以内は黄、それ超は赤
+        "level/trend_seconds": 30,       # トレンドグラフのウィンドウ秒数
         # グラフ専用タブ
         "layout/graphs_tab_rows": 2,
         "layout/graphs_tab_cols": 3,
@@ -4617,12 +4623,27 @@ HELP_HTML = """
 <table>
   <tr><th>タブ</th><th>内容</th></tr>
   <tr><td><b>Dashboard</b></td><td>現在 shot の主役 KPI + ミニターゲット + 指標表 + ローカル NLG フィードバック + 自由に選べるグラフ枠</td></tr>
+  <tr><td><b>水準器 (Level)</b></td><td>カント角を人工水平器風に可視化(円 + 傾く水平線 + ライブトレンド 30s + 直近 shot)。横幅 1/4 まで縮めて他アプリと並べやすい</td></tr>
+  <tr><td><b>グラフ</b></td><td>Dashboard とは独立、グラフ専用に大きく表示</td></tr>
   <tr><td><b>Sessions</b></td><td>上 = セッション一覧、下 = サブタブ(Overview / Recoil / Cant / Drift / Spectrum)で全体レビュー</td></tr>
   <tr><td><b>Shots</b></td><td>session 内 shot を 10 発 Series ごとにブロック化、本家 SCATT 風(ターゲット + 着弾 + テーブル + μ)</td></tr>
   <tr><td><b>Help</b></td><td>このページ</td></tr>
-  <tr><td><b>Settings</b></td><td>動作・閾値・レイアウト・心拍・タブ可視性・エクスポート</td></tr>
+  <tr><td><b>Settings</b></td><td>動作・閾値・レイアウト・心拍・タブ可視性・水準器閾値・エクスポート</td></tr>
 </table>
 <p class="muted">※ Target タブは Dashboard のミニターゲットに統合(廃止)。</p>
+
+<h2>水準器 (Level) タブ</h2>
+<p>カント角(銃身ロール)を計器風に可視化する専用タブ。人工水平器 (attitude indicator) と同じ見立て:</p>
+<ul>
+  <li><b>円形ベゼル + 傾く水平線</b>: カント角分だけ水平線が傾く。閾値色で着色(緑=±1°以内、黄=±3°以内、赤=それ超、Settings で変更可)。</li>
+  <li><b>中央マーカー</b>: 機体マーク風に固定。水平線とのずれが現在のカント。</li>
+  <li><b>数字</b>(計器下に控えめ): 例「-1.83°」。</li>
+  <li><b>直近 shot</b>: 最後に撃った shot の発射カントを小さく。shot 選択でも追従。</li>
+  <li><b>ライブトレンドグラフ</b>: 直近 30 秒(Settings で 5〜120 秒)のカント推移。閾値ライン込み。</li>
+  <li><b>統計</b>: ライブ SD(直近の振れ幅)と session 内 shot 平均±SD。</li>
+  <li><b>接続インジケータ</b>: Live polling 中は緑、3 秒以上更新なしで黄(停止中)。</li>
+</ul>
+<p class="muted">他アプリと並べて使いたいときは、ウィンドウを縦に細く(画面 1/4 幅)しても要素が段階的に省略されて読めるように設計。</p>
 
 <h2>キーボードショートカット</h2>
 <table>
@@ -5049,6 +5070,29 @@ class SettingsTab(QWidget):
         form_t.addRow("Z-score 異常閾値 (赤)", self.sp_z_bad)
         tw = QWidget(); tw.setLayout(form_t); v.addWidget(tw)
 
+        # ========== Level (水準器タブ) ==========
+        v.addWidget(self._header("Level  水準器タブ"))
+        form_lv = QFormLayout()
+        form_lv.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        self.sp_level_green = QDoubleSpinBox()
+        self.sp_level_green.setRange(0.1, 10.0); self.sp_level_green.setSingleStep(0.1)
+        self.sp_level_green.setDecimals(1)
+        self.sp_level_green.setValue(float(SETTINGS.get("level/threshold_green") or 1.0))
+        self.sp_level_green.setSuffix(" °")
+        form_lv.addRow("緑判定 (±この角度以内)", self.sp_level_green)
+        self.sp_level_yellow = QDoubleSpinBox()
+        self.sp_level_yellow.setRange(0.2, 15.0); self.sp_level_yellow.setSingleStep(0.1)
+        self.sp_level_yellow.setDecimals(1)
+        self.sp_level_yellow.setValue(float(SETTINGS.get("level/threshold_yellow") or 3.0))
+        self.sp_level_yellow.setSuffix(" °")
+        form_lv.addRow("黄判定 (±これ超は赤)", self.sp_level_yellow)
+        self.sp_level_trend = QSpinBox()
+        self.sp_level_trend.setRange(5, 120)
+        self.sp_level_trend.setValue(int(SETTINGS.get("level/trend_seconds") or 30))
+        self.sp_level_trend.setSuffix(" 秒")
+        form_lv.addRow("トレンドグラフ表示秒数", self.sp_level_trend)
+        lvw = QWidget(); lvw.setLayout(form_lv); v.addWidget(lvw)
+
         # ========== Layout ==========
         v.addWidget(self._header("Layout  ダッシュボード"))
         form_l = QFormLayout()
@@ -5137,7 +5181,8 @@ class SettingsTab(QWidget):
         form_tabs = QFormLayout()
         form_tabs.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.cb_tabs: dict[str, QCheckBox] = {}
-        for key, label in [("dashboard", "Dashboard"), ("sessions", "Sessions"),
+        for key, label in [("dashboard", "Dashboard"), ("level", "水準器"),
+                           ("sessions", "Sessions"),
                            ("shots", "Shots"), ("target", "Target"),
                            ("help", "Help")]:
             cb = QCheckBox(); cb.setChecked(SETTINGS.get(f"tabs/{key}"))
@@ -5433,6 +5478,10 @@ class SettingsTab(QWidget):
             SETTINGS.set(f"layout/hero_kpi_{i+1}", cb.currentData())
         for key, cb in self.cb_tabs.items():
             SETTINGS.set(f"tabs/{key}", cb.isChecked())
+        # 水準器 (Level) タブ
+        SETTINGS.set("level/threshold_green", self.sp_level_green.value())
+        SETTINGS.set("level/threshold_yellow", self.sp_level_yellow.value())
+        SETTINGS.set("level/trend_seconds", self.sp_level_trend.value())
         # 心拍
         SETTINGS.set("heart/mode", self.cb_hr_mode.currentData())
         SETTINGS.set("heart/device_address", self.le_hr_addr.text().strip())
@@ -6156,25 +6205,43 @@ class MainWindow(QMainWindow):
         self.home_tab.mode_changed.connect(self._on_mode_changed)
         # グラフ専用タブ (Dashboard とは独立、大きく表示)
         self.graphs_tab = GraphsTab()
+        # 水準器 (Level) タブ — カント可視化
+        self.level_tab = LV.LevelTab(SETTINGS)
 
-        self.tabs.addTab(self.home_tab, _t("tab.home"))
-        # 表示する tab を SETTINGS から (直接追加。1 画面に収めるため scroll ラップ無し)
+        # 横方向にウィンドウを縮めても閉じ込められないよう、各タブを QScrollArea
+        # で包む。Level タブは内部でリサイズに対応しているので包まない。
+        def _wrap(inner: QWidget) -> QScrollArea:
+            sa = QScrollArea()
+            sa.setWidgetResizable(True)
+            sa.setFrameShape(QFrame.Shape.NoFrame)
+            sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            sa.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            sa.setWidget(inner)
+            return sa
+
+        self._tab_wrap: dict = {}
+        # ホームタブ
+        home_wrap = _wrap(self.home_tab)
+        self._tab_wrap[self.home_tab] = home_wrap
+        self.tabs.addTab(home_wrap, _t("tab.home"))
+        # 表示する tab を SETTINGS から
         tab_defs = [
-            ("dashboard", self.dashboard,    _t("tab.dashboard")),
-            ("graphs",    self.graphs_tab,   _t("tab.graphs")),
-            ("sessions",  self.sessions_tab, _t("tab.sessions")),
-            ("shots",     self.shots_tab,    _t("tab.shots")),
-            ("help",      self.help_tab,     _t("tab.help")),
+            ("dashboard", self.dashboard,    _t("tab.dashboard"), True),
+            ("level",     self.level_tab,    _t("tab.level"),     False),  # 内部対応
+            ("graphs",    self.graphs_tab,   _t("tab.graphs"),    True),
+            ("sessions",  self.sessions_tab, _t("tab.sessions"),  True),
+            ("shots",     self.shots_tab,    _t("tab.shots"),     True),
+            ("help",      self.help_tab,     _t("tab.help"),      False),  # 内部対応
         ]
-        for key, w, label in tab_defs:
-            if SETTINGS.get(f"tabs/{key}"):
-                self.tabs.addTab(w, label)
-        # Settings タブは常時表示
+        for key, w, label, need_wrap in tab_defs:
+            if not SETTINGS.get(f"tabs/{key}"):
+                continue
+            ww = _wrap(w) if need_wrap else w
+            self._tab_wrap[w] = ww
+            self.tabs.addTab(ww, label)
+        # Settings タブは常時表示 (内部に scroll 既存)
+        self._tab_wrap[self.settings_tab] = self.settings_tab
         self.tabs.addTab(self.settings_tab, _t("tab.settings"))
-        # 互換: 旧コードが _tab_wrap[x] を読んでいたら x がそのまま返るようマップ
-        self._tab_wrap = {w: w for w in [self.home_tab, self.dashboard, self.graphs_tab,
-                                          self.sessions_tab, self.shots_tab,
-                                          self.help_tab, self.settings_tab]}
         self._pending_trace_for_tabs = None  # 未使用 (互換のため残置)
         self._latest_secondary: dict | None = None
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -6321,6 +6388,9 @@ class MainWindow(QMainWindow):
         self.status_hint.setStyleSheet(
             f"color: {hex_of(C.FG_MUTED)}; font-size: 10px; padding: 0 8px;"
         )
+        # ウィンドウを狭くしてもステータスバーが横幅を引っ張らないように
+        self.status_hint.setMinimumWidth(0)
+        self.status_hint.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.status.addPermanentWidget(self.status_hint)
         self.status.showMessage(f"db: {db_path}")
 
@@ -6454,6 +6524,7 @@ class MainWindow(QMainWindow):
             interval = SETTINGS.get("behavior/polling_interval_s")
             self.poller = PollerThread(self.db_path, interval=interval)
             self.poller.new_trace.connect(self._on_new_trace)
+            self.poller.new_trace.connect(self._on_new_trace_for_level)
             self.poller.active_session_changed.connect(self._on_active_session_changed)
             self.poller.start()
             self.start_btn.setText("Live 停止")
@@ -6812,6 +6883,11 @@ class MainWindow(QMainWindow):
         # 現在 trace を再描画
         if hasattr(self, "_current_trace_dict"):
             self._apply_trace(self._current_trace_dict)
+        # 水準器タブの閾値・トレンド秒数を反映
+        try:
+            self.level_tab.settings_changed()
+        except Exception as e:
+            LOG.warn(f"level settings refresh failed: {e}")
 
     def _on_behavior_changed(self):
         """polling interval / always on top / caffeinate の即時反映"""
@@ -6905,6 +6981,28 @@ class MainWindow(QMainWindow):
             del self._session_cache[k]
         self._update_session_views(sid)
         self.status.showMessage(f"new shot #{shots[0]['shot_id']} (trace #{t['trace_id']})")
+
+    def _on_new_trace_for_level(self, t: dict):
+        """Live trace を 水準器 (Level) タブにも流す (shot 有無に関わらず)。"""
+        sess = t.get("session") or {}
+        sr = sess.get("sample_rate") or 120
+        sid = t.get("session_id")
+        # セッションラベル: 距離 + 姿勢名 (どちらか欠ければ session #id)
+        dist = sess.get("distance")
+        pos_name = POSITION_NAMES.get(sess.get("position")) if sess.get("position") is not None else None
+        if dist is not None and pos_name:
+            label = f"{int(dist)}m {pos_name}  (session #{sid})"
+        elif sid is not None:
+            label = f"session #{sid}"
+        else:
+            label = None
+        try:
+            self.level_tab.update_trace(
+                t.get("samples"), t.get("shots") or [], sr,
+                session_label=label, session_id=sid,
+            )
+        except Exception as e:
+            LOG.warn(f"level update failed: {e}")
 
     def _on_shot_selected(self, trace_id: int):
         self._replay_trace_id(trace_id)
@@ -7017,6 +7115,16 @@ class MainWindow(QMainWindow):
         # Dashboard と Target (ミニ) は主役なので常時更新
         self.dashboard.update_trace(samples, shots, sr, session_shots=compare_set)
         self.target.update_trace(samples, shots, sr)
+        # 水準器タブの「直近 shot」表示を更新 (offline 再生でも反映)
+        if shots:
+            sh = shots[0]
+            tro = sh.get("trace_offset")
+            if tro is not None and 0 <= tro < len(samples):
+                try:
+                    cant_deg = float(np.degrees(samples[tro][2]))
+                    self.level_tab.set_current_shot(cant_deg, f"shot #{sh['shot_id']}")
+                except Exception:
+                    pass
         # それ以外は表示中タブだけ更新 (Live polling 中の重さ軽減)
         sess_shots_for_recoil = self._session_cache.get((sid, "session"), [])
         meta = {
