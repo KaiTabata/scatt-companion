@@ -22,14 +22,6 @@ def test_rifle_10m_geometry():
     T.set_current("rifle_50m")
 
 
-def test_pistol_10m_geometry():
-    T.set_current("pistol_10m")
-    d = T.current()
-    assert d.outer_diam_mm == 155.5
-    assert d.ring_10_radius_mm == 5.75
-    T.set_current("rifle_50m")
-
-
 def test_unknown_key_is_ignored():
     T.set_current("rifle_50m")
     T.set_current("nonexistent_xyz")

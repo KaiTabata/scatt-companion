@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scatt-companion"
-version = "0.4.10"
+version = "0.4.11"
 description = "SCATT Expert 補助ツール — 伏射 / 立射対応、本家にない指標と分析を提供"
 readme = "README.md"
 license = { text = "Apache-2.0" }

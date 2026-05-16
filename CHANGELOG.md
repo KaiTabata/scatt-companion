@@ -3,6 +3,25 @@
 すべての変更点は [Keep a Changelog](https://keepachangelog.com/) 形式に倣う。
 バージョニングは [Semantic Versioning](https://semver.org/) ベース。
 
+## [0.4.11] — 2026-05-16
+
+### Fixed
+- **mode 切替後に軌跡サイズがズレるバグ** を修正
+  - `TargetTab` / `SeriesTargetView` の `_recreate_target()` がどこからも呼ばれず、in-memory discipline が変わっても寸法属性が古いままだった
+  - ホームタブ「始める」と Settings の discipline 変更で `discipline_changed` 経由で再描画されるよう配線
+  - fitInView 倍率が `resizeEvent` / `_recreate_target` で別式だった → `scatt_target.view_radius_mm()` に集約 (全種目で外径 × 1.05 / 2 に統一)
+- **死に Settings を撤去**: `thresh/suspicious_radius_mm` / `hold_velocity_mm_s` / `r95_good_mm` / `r95_bad_mm` は UI から書き込めても実コードで読まれていなかった (50m 決め打ち) → Settings タブから外し、種目別 (Discipline) の値を自動使用
+- **50m 決め打ちの解析閾値を種目別化**: `hold_time` / `segment_phases` / `recoil_detailed` / `_gr_r95_bars` / 反動 settle 円が `T.current()` 由来になり、AR で「常に静止」「常に緑」「常に即 settle」と判定されていた問題を解消
+- **`_gr_r95_history` の X 軸が他 history グラフと 1 ずれていた**問題を修正 (1-indexed → 0-indexed)
+- **`_gr_cant_history`** の「全 0 なら旧フォーマット」判定を撤去 (水平を保てる射手の正常データを誤検出していた)
+
+### Changed
+- **Settings の discipline 切替が即時反映**になった (再起動不要)
+- **`SeriesPanel` の異常閾値スピンボックス**: 下限を 50mm → 5mm に拡張 (AR の 25mm 設定が入るように)
+
+### Removed
+- **10m エアピストル (`pistol_10m`)** のサポートを廃止 (`scatt_target` / `scatt_i18n` / docs / Help タブ / CHANGELOG 過去エントリ全て更新)。旧版で `discipline=pistol_10m` を保存していたユーザーは次回起動時に `rifle_50m` にフォールバック
+
 ## [0.4.10] — 2026-05-16
 
 ### Added
@@ -40,7 +59,7 @@
 
 ### Changed
 - **ダークモードを完全削除** (使用しない方針に統一)
-- **速度時系列グラフの閾値を種目別化**: 50m = 15/60 mm/s、10m AR/AP = 3/10 mm/s
+- **速度時系列グラフの閾値を種目別化**: 50m = 15/60 mm/s、10m AR = 3/10 mm/s
 - **shot scatter にターゲットリングを薄く重ね描画** (データ範囲に合わせ自動スケール)
 - **SCATT 互換 S1 を非表示化**: 本家計算式の完全特定ができていないため、誤差のある値の表示を停止 (代わりに `r95_1` を既定 KPI に)
 - **discipline-aware 色判定**: 種目ごとの R95 妥当範囲に応じた良/悪判定
@@ -134,7 +153,7 @@
 ## [0.3.0] — 2026-05-13
 
 ### Added
-- **射撃種目切替** (`scatt_target.py`): 50m ライフル(既存)/ 10m エアライフル / 10m エアピストル に対応
+- **射撃種目切替** (`scatt_target.py`): 50m ライフル(既存)/ 10m エアライフル に対応
   - ターゲット幾何 (外径・リング間隔・黒地) と判定半径 (10a/10b/9c) を種目別に適用
   - Settings > 動作 > 射撃種目 から選択、再起動で反映
   - ターゲット描画のマーカー/フォント/十字を target 外径に合わせて自動スケール

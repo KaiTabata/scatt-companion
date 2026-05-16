@@ -126,8 +126,7 @@ def test_fetch_recent_with_synthetic_db(tmp_path):
 
 
 def test_detect_discipline_label():
-    """distance/caliber → ラベル変換のテスト。"""
+    """distance → ラベル変換のテスト (ピストルは廃止、ライフルのみ)。"""
     assert "AR" in HOME.detect_discipline_label(10.0, 4.5, 0)
-    assert "AP" in HOME.detect_discipline_label(10.0, 4.5 + 0.6, 0)  # > 5.0
     assert "伏射" in HOME.detect_discipline_label(50.0, 5.6, 0)
     assert "立射" in HOME.detect_discipline_label(50.0, 5.6, 1)

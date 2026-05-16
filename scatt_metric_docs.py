@@ -27,7 +27,7 @@ METRIC_DOCS: dict[str, dict] = {
             "10a = Σ<sub>k: t[k] ∈ [t<sub>fire</sub>−1, t<sub>fire</sub>]</sub> "
             "<b>1</b>[ r[k] ≤ R<sub>10</sub> ] / N<sub>window</sub> × 100  [%]<br>"
             "r[k] = √(x[k]² + y[k]²)  (中心からの距離 mm)<br>"
-            "R<sub>10</sub> = 5.2mm (50m ライフル) / 0.25mm (10m エアライフル) / 5.75mm (10m エアピストル)",
+            "R<sub>10</sub> = 5.2mm (50m ライフル) / 0.25mm (10m エアライフル)",
         "why": "本家 SCATT の主役指標。値が高いほど狙いが安定して 10 点圏に入っている。",
         "range": "60–95% (50m prone 上級者)",
     },
@@ -44,7 +44,7 @@ METRIC_DOCS: dict[str, dict] = {
         "summary": "10 点中央 (R≤R<sub>inner-10</sub>) の滞在率",
         "formula":
             "10b = Σ<sub>k</sub> <b>1</b>[ r[k] ≤ R<sub>inner-10</sub> ] / N × 100  [%]<br>"
-            "R<sub>inner-10</sub> = 2.5mm (50m ライフル) / 0.125mm (10m エアライフル) / 2.5mm (10m エアピストル)",
+            "R<sub>inner-10</sub> = 2.5mm (50m ライフル) / 0.125mm (10m エアライフル)",
         "why": "10a より中央寄り。1.0 点増加に直結する評価。",
     },
     "ten_b_05s": {

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SCATT Companion — SCATT Expert 補助分析ツール</title>
-<meta name="description" content="SCATT Expert に並べて使う補助分析ツール。50m ライフル / 10m エアライフル・ピストル対応、本家にない手のふるえ・呼吸 FFT、反動詳細、心拍/HRV、自然言語フィードバック。">
+<meta name="description" content="SCATT Expert に並べて使う補助分析ツール。50m ライフル / 10m エアライフル対応、本家にない手のふるえ・呼吸 FFT、反動詳細、心拍/HRV、自然言語フィードバック。">
 <meta property="og:title" content="SCATT Companion">
 <meta property="og:description" content="SCATT Expert に並べて使う伏射補助分析ツール">
 <meta property="og:image" content="img/icon.png">
@@ -34,10 +34,10 @@
     <h1>SCATT Expert に<br>並べて使う、伏射 / 立射対応の分析ツール</h1>
     <p class="hero-sub">
       本家にない手のふるえ・呼吸 FFT、反動詳細、銃の傾き統計、心拍 / HRV、自然言語フィードバック。<br>
-      50m ライフル / 10m エアライフル / 10m エアピストルに対応。ローカル動作・オフライン完結。
+      50m ライフル / 10m エアライフルに対応。ローカル動作・オフライン完結。
     </p>
     <div class="hero-cta">
-      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.10/scatt-companion-0.4.10.dmg">DMG をダウンロード (v0.4.10)</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.11/scatt-companion-0.4.11.dmg">DMG をダウンロード (v0.4.11)</a>
       <a class="btn secondary" href="#install">インストール手順</a>
       <a class="btn secondary" href="https://github.com/KaiTabata/scatt-analyzer" target="_blank" rel="noopener">GitHub</a>
     </div>
@@ -134,7 +134,7 @@
       </article>
       <article class="card">
         <h3>射撃種目に対応</h3>
-        <p><strong>50m ライフル / 10m エアライフル / 10m エアピストル</strong>を Settings から切替。ターゲット幾何と 10a/10b/9c の判定半径が ISSF 仕様に追従。</p>
+        <p><strong>50m ライフル / 10m エアライフル</strong>を Settings から切替。ターゲット幾何と 10a/10b/9c の判定半径が ISSF 仕様に追従。</p>
       </article>
       <article class="card">
         <h3>バックアップと持ち運び</h3>
@@ -236,7 +236,7 @@
     <h2>インストール</h2>
     <h3>方法 A: DMG ダウンロード (推奨)</h3>
     <p>
-      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.10/scatt-companion-0.4.10.dmg">scatt-companion-0.4.10.dmg (約 260MB)</a>
+      <a class="btn primary" href="https://github.com/KaiTabata/scatt-analyzer/releases/download/v0.4.11/scatt-companion-0.4.11.dmg">scatt-companion-0.4.11.dmg (約 260MB)</a>
     </p>
     <ol>
       <li>DMG をダブルクリックで開く</li>
@@ -300,11 +300,11 @@ make test      # pytest で単体テスト</code></pre>
     </details>
     <details>
       <summary>立射・膝射でも使えますか?</summary>
-      <p>機能としては動きますが、現在の閾値感(R95 良/悪、HOLD time 等)は伏射前提のチューニング。閾値は Settings タブで調整できます。</p>
+      <p>立射は 10m エアライフルモードで HOLD / R95 等の閾値が AR 用に自動チューニングされます。膝射は伏射閾値を流用しています。</p>
     </details>
     <details>
       <summary>50m ライフル以外でも使えますか?</summary>
-      <p>v0.4.0 から <strong>10m エアライフル</strong>と<strong>10m エアピストル</strong>に対応。Settings の「射撃種目」から切替、ターゲット幾何と 10a/10b/9c の判定半径が ISSF 公式仕様に追従します。</p>
+      <p>v0.4.0 から <strong>10m エアライフル</strong>に対応。Settings の「射撃種目」から切替、ターゲット幾何と 10a/10b/9c の判定半径が ISSF 公式仕様に追従します。</p>
     </details>
     <details>
       <summary>Windows でも動きますか?</summary>

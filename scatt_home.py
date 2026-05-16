@@ -41,17 +41,14 @@ def detect_discipline_label(dist: float | None, cal: float | None,
     """SCATT の sessions row から「種目 + 姿勢」ラベルを生成。
 
     SCATT は position を 0 のままにすることが多い (= 不正確) ので、
-    distance と caliber から discipline を推定する。
-      - dist ≤ 10.5 & cal ≤ 5.0 → 10m AR
-      - dist ≤ 10.5 & cal > 5.0 → 10m AP
-      - dist ≥ 25 → 50m/25m など, position 名を併記
+    distance から discipline を推定する。
+      - dist ≤ 10.5 → 10m AR
+      - dist ≥ 25  → 50m/25m など、position 名を併記
     """
     if dist is None:
         return "?"
-    if dist <= 10.5 and cal is not None:
-        if cal <= 5.0:
-            return "10m AR (立射)"
-        return "10m AP"
+    if dist <= 10.5:
+        return "10m AR (立射)"
     pos_name = POSITION_NAMES.get(pos, "?")
     return f"{int(dist)}m {pos_name}"
 

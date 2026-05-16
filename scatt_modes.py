@@ -3,7 +3,7 @@
 各モードは Dashboard のレイアウト (KPI 4 枠 + デフォルトグラフ枠 + 表示要素)
 を一括設定するプリセット。ホーム画面で選択 → SETTINGS の layout/* を一括書換。
 
-discipline (rifle_50m / rifle_10m / pistol_10m) と独立した「使い方」軸。
+discipline (rifle_50m / rifle_10m) と独立した「使い方」軸。
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ class Mode:
     key: str
     label: str
     description: str
-    # 推奨 discipline (rifle_50m / rifle_10m / pistol_10m)
+    # 推奨 discipline (rifle_50m / rifle_10m)
     suggested_discipline: str
     # 主役 KPI 4 枚 (METRICS の key)
     hero_kpis: tuple[str, ...]

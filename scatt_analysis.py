@@ -339,8 +339,8 @@ def stability_multi(t: TraceArrays, windows=(0.5, 1.0, 2.0, 3.0)) -> list[dict]:
 # ----- Hold / Aim / Trigger フェーズ分解 -----
 
 def segment_phases(t: TraceArrays,
-                   hold_thresh: float = 60.0,
-                   aim_thresh: float = 20.0) -> dict:
+                   hold_thresh: float | None = None,
+                   aim_thresh: float | None = None) -> dict:
     """速度ベースで pre-trigger を Hold/Aim/Trigger に大別。
 
     Hold:    粗い狙い(>= hold_thresh mm/s)
@@ -348,7 +348,12 @@ def segment_phases(t: TraceArrays,
     Trigger: 最終ホールド(< aim_thresh)
 
     戻り値: 各フェーズの (duration, fraction, mean_velocity)
+    閾値=None なら現 discipline の phase_hold_mm_s / phase_aim_mm_s。
     """
+    if hold_thresh is None:
+        hold_thresh = T.current().phase_hold_mm_s
+    if aim_thresh is None:
+        aim_thresh = T.current().phase_aim_mm_s
     if t.trace_offset is None or t.trace_offset < 2:
         return {}
     pre = t.pre()
@@ -403,12 +408,15 @@ def group_drift(shots: list[dict]) -> dict:
 
 # ----- 伏射特化指標 -----
 
-def hold_time(t: TraceArrays, vel_thresh: float = 15.0,
+def hold_time(t: TraceArrays, vel_thresh: float | None = None,
               min_duration_s: float = 0.5) -> dict:
     """速度 < vel_thresh が連続している区間の最長時間 (= 最終ホールド時間)。
 
     伏射では発射直前に「速度 15mm/s 以下が 0.5〜2 秒継続」が理想とされる。
+    vel_thresh=None なら現 discipline の hold_v_thr_mm_s (50m=15, AR=3, AP=10)。
     """
+    if vel_thresh is None:
+        vel_thresh = T.current().hold_v_thr_mm_s
     if t.trace_offset is None or t.trace_offset < 2:
         return {"hold_s": 0.0, "longest_hold_s": 0.0}
     pre = t.pre()
@@ -563,7 +571,7 @@ def recovery_dispersion(t: TraceArrays, window_s: float = 1.0) -> dict:
 
 
 def recoil_detailed(t: TraceArrays, window_s: float = 1.0,
-                    settle_threshold_mm: float = 5.0) -> dict:
+                    settle_threshold_mm: float | None = None) -> dict:
     """発射後の反動を詳細に分析。発射点を原点とした相対挙動。
 
     返り値:
@@ -576,7 +584,10 @@ def recoil_detailed(t: TraceArrays, window_s: float = 1.0,
       post_05_r95_mm   : 発射後 0.5 秒の照準ブレ円 (フォロースルー安定度)
       post_v_mean      : 発射後の平均速度 (mm/s)
       direction_std_deg: 発射後 100-500ms の動きベクトル方向の標準偏差 (低い=単方向反動)
+    settle_threshold_mm=None なら現 discipline の recoil_settle_mm (50m=5, AR=1, AP=5)。
     """
+    if settle_threshold_mm is None:
+        settle_threshold_mm = T.current().recoil_settle_mm
     if t.trace_offset is None or t.trace_offset >= t.n - 2:
         return {}
     n_w = int(round(window_s * t.sample_rate))
@@ -686,7 +697,7 @@ def summarize(t: TraceArrays) -> dict:
         "recoil": recoil_detailed(t),
         "steadiness": steadiness_score(t),
         # SCATT 互換: 10a / 10a-0.5 / 10b / 9c
-        # 半径は射撃種目 (50m ライフル / 10m エアライフル / 10m エアピストル) に応じて変動
+        # 半径は射撃種目 (50m ライフル / 10m エアライフル) に応じて変動
         "ten_a_1s":   ten_a_percent(t, 1.0, T.current().ring_10_radius_mm),
         "ten_a_05s":  ten_a_percent(t, 0.5, T.current().ring_10_radius_mm),
         "ten_b_1s":   ten_a_percent(t, 1.0, T.current().ring_inner_10_radius_mm),

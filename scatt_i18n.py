@@ -87,7 +87,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # ===== 種目 =====
     "discipline.rifle_50m": {"ja": "50m ライフル", "en": "50m Rifle"},
     "discipline.rifle_10m": {"ja": "10m エアライフル", "en": "10m Air Rifle"},
-    "discipline.pistol_10m": {"ja": "10m エアピストル", "en": "10m Air Pistol"},
 
     # ===== モード =====
     "mode.prone": {"ja": "伏射", "en": "Prone"},
