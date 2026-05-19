@@ -1,0 +1,54 @@
+SCATT Companion
+Copyright 2024-2026 Kai Tabata
+
+Licensed under the Apache License, Version 2.0 (the "License").
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+See LICENSE for the full license text.
+
+
+------------------------------------------------------------
+Project scope / 利用想定
+------------------------------------------------------------
+
+本ソフトは 慶應義塾軆育會射撃部 内での利用を前提に開発されている。
+オープンソース (Apache License 2.0) として誰でも自由に利用・改変・
+再配布できるが、機能・初期値・前提条件は同射撃部の実運用に合わせて
+チューニングされている。外部の利用者から見て不自然に映る挙動が
+ある場合、この前提に起因することがある。
+
+SCATT Companion is developed primarily for internal use by the
+Keio University Athletic Association Shooting Team
+(慶應義塾軆育會射撃部). It is offered as open-source software under
+Apache License 2.0, but its features, defaults, and assumptions are
+tuned to that user base.
+
+
+------------------------------------------------------------
+Trademarks / 商標
+------------------------------------------------------------
+
+This project is NOT affiliated with, endorsed by, or sponsored by
+SCATT Electronics. "SCATT" and "SCATT Expert" are trademarks of
+SCATT Electronics. They are used here for descriptive purposes only
+(to identify which product's output data this software interoperates
+with). No claim to those marks is made.
+
+SCATT Expert の公式ソフトではない。"SCATT" および "SCATT Expert" は
+SCATT Electronics の商標であり、本ソフトとの相互運用性を示す目的での
+記述的使用のみを行っている。商標権を主張するものではない。
+
+
+------------------------------------------------------------
+Third-party software / 同梱サードパーティソフトウェア
+------------------------------------------------------------
+
+The bundled distributions (DMG / EXE) include third-party software
+that is licensed separately. See THIRD-PARTY-LICENSES.md for the
+full list of components, licenses, and source-availability notices.
+
+配布バイナリ (DMG / EXE) には別ライセンスのサードパーティ
+ソフトウェアが同梱される。コンポーネント・ライセンス・ソース取得
+方法は THIRD-PARTY-LICENSES.md を参照。
