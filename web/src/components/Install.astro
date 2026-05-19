@@ -4,41 +4,279 @@ import Section from './Section.astro';
 const version = '0.4.12';
 const dmgUrl = `https://github.com/KaiTabata/scatt-companion/releases/download/v${version}/scatt-companion-${version}.dmg`;
 const exeUrl = `https://github.com/KaiTabata/scatt-companion/releases/download/v${version}/SCATT-Companion-Setup-${version}.exe`;
+const macCmd = 'xattr -dr com.apple.quarantine "/Applications/SCATT Companion.app"';
+const macPurgeCmd = `rm -rf "/Applications/SCATT Companion.app" \\
+       ~/Library/Application\\ Support/scatt-companion \\
+       ~/Library/Logs/scatt-analyzer \\
+       ~/Library/Preferences/com.scatt-companion.app.plist \\
+       ~/Library/Preferences/com.scatt-companion.app.SCATT-Prone-Analyzer.plist`;
+const winPurgeCmd = `rmdir /s /q "%APPDATA%\\scatt-companion" "%LOCALAPPDATA%\\scatt-analyzer"
+reg delete "HKCU\\Software\\scatt-companion" /f`;
 ---
 
 <Section id="install" title="入手" narrow>
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-px bg-neutral-200 rounded-2xl overflow-hidden mb-12">
-    <div class="bg-white p-8">
-      <p class="text-xs uppercase tracking-widest text-neutral-400 mb-2">macOS 11+</p>
-      <h3 class="text-lg font-semibold text-neutral-900 mb-1">Mac (DMG)</h3>
-      <p class="text-xs text-neutral-500 mb-5">約 260 MB</p>
+  <div class="mb-8 px-5 py-4 rounded-xl border border-neutral-200 bg-neutral-50/60 text-sm text-neutral-600 leading-relaxed">
+    <p>
+      <span class="font-medium text-neutral-900">前提:</span> SCATT Companion は SCATT Electronics 社の射撃トレーニングソフト <span class="font-medium text-neutral-900">SCATT Expert</span> が出力するデータを読みに行く補助ツールです。先に本体をインストールしてください。
+    </p>
+    <p class="mt-2">
       <a
-        href={dmgUrl}
-        class="inline-block rounded-full bg-neutral-900 text-white px-5 py-2 text-sm font-medium hover:bg-neutral-700 transition"
+        href="https://www.scatt.com/ja/pages/downloads"
+        target="_blank"
+        rel="noopener"
+        class="inline-flex items-center gap-1 text-neutral-900 underline underline-offset-2 hover:text-neutral-700 transition"
       >
-        ダウンロード v{version}
+        SCATT Expert を公式サイトから入手
+        <span aria-hidden="true" class="text-xs">↗</span>
       </a>
-      <p class="mt-4 text-xs text-neutral-500 leading-relaxed">
-        ad-hoc 署名。初回起動は右クリック → 開く。
-      </p>
-    </div>
-    <div class="bg-white p-8">
-      <p class="text-xs uppercase tracking-widest text-neutral-400 mb-2">Windows 10+</p>
-      <h3 class="text-lg font-semibold text-neutral-900 mb-1">Windows (NSIS)</h3>
-      <p class="text-xs text-neutral-500 mb-5">約 35 MB</p>
-      <a
-        href={exeUrl}
-        class="inline-block rounded-full bg-neutral-900 text-white px-5 py-2 text-sm font-medium hover:bg-neutral-700 transition"
-      >
-        ダウンロード v{version}
-      </a>
-      <p class="mt-4 text-xs text-neutral-500 leading-relaxed">
-        per-user、管理者権限不要。SmartScreen 警告は「詳細情報 → 実行」。
-      </p>
-    </div>
+      <span class="text-xs text-neutral-400 ml-1">scatt.com</span>
+    </p>
   </div>
 
-  <details class="border-t border-neutral-200 pt-6">
+  <p class="text-sm text-neutral-500 mb-8 leading-relaxed">
+    OS を選んでください。未署名配布のため、初回のみ簡単な手順があります。
+  </p>
+
+  <div class="flex flex-wrap gap-2 mb-12">
+    <a href="#mac-start" class="rounded-full border border-neutral-300 text-neutral-700 px-4 py-1.5 text-xs font-medium hover:border-neutral-900 hover:text-neutral-900 transition">
+      macOS へ
+    </a>
+    <a href="#win-start" class="rounded-full border border-neutral-300 text-neutral-700 px-4 py-1.5 text-xs font-medium hover:border-neutral-900 hover:text-neutral-900 transition">
+      Windows へ
+    </a>
+  </div>
+
+  <!-- ====== macOS ブロック ====== -->
+  <article id="mac-start" class="bg-white rounded-2xl border border-neutral-200 overflow-hidden scroll-mt-20 mb-10">
+    <header class="px-8 py-6 border-b border-neutral-200 bg-neutral-50/60">
+      <p class="text-xs uppercase tracking-widest text-neutral-400 mb-1">macOS 11+</p>
+      <h3 class="text-xl font-semibold text-neutral-900">Mac (DMG)</h3>
+      <p class="text-xs text-neutral-500 mt-1">約 260 MB / Apple Silicon &amp; Intel</p>
+    </header>
+
+    <div class="px-8 py-8">
+      <p class="text-xs uppercase tracking-widest text-neutral-400 mb-6">初回起動 (5 ステップ)</p>
+
+      <ol class="text-sm text-neutral-700 space-y-6 leading-relaxed">
+        <li class="flex gap-4">
+          <span class="text-neutral-300 tabular-nums text-xs pt-1 shrink-0">01</span>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-neutral-900 mb-2">DMG をダウンロード</p>
+            <a
+              href={dmgUrl}
+              class="inline-block rounded-full bg-neutral-900 text-white px-5 py-2 text-sm font-medium hover:bg-neutral-700 transition"
+            >
+              ダウンロード v{version}
+            </a>
+            <p class="mt-2 text-xs text-neutral-400">約 260 MB / GitHub Releases から配信</p>
+          </div>
+        </li>
+
+        <li class="flex gap-4">
+          <span class="text-neutral-300 tabular-nums text-xs pt-1 shrink-0">02</span>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-neutral-900 mb-1">DMG を開いてアプリをドラッグ</p>
+            <p>ダウンロードした DMG をダブルクリックすると、ウィンドウが開きます。<br>
+            <code class="text-[11px] bg-neutral-100 px-1.5 py-0.5 rounded">SCATT&nbsp;Companion.app</code> を <code class="text-[11px] bg-neutral-100 px-1.5 py-0.5 rounded">アプリケーション</code> フォルダにドラッグ &amp; ドロップしてください。</p>
+            <p class="mt-2 text-xs text-neutral-500">※ DMG が開けないと出たら、ファイルを右クリック → <em class="not-italic font-medium text-neutral-900">開く</em>。</p>
+          </div>
+        </li>
+
+        <li class="flex gap-4">
+          <span class="text-neutral-300 tabular-nums text-xs pt-1 shrink-0">03</span>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-neutral-900 mb-1">ターミナル.app を開く</p>
+            <p>キーボードで <kbd class="text-[11px] bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded font-mono">⌘</kbd> + <kbd class="text-[11px] bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded font-mono">Space</kbd> を押すと検索バーが出ます。<br>
+            「<span class="font-medium text-neutral-900">ターミナル</span>」と入力 → <kbd class="text-[11px] bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded font-mono">Enter</kbd> で起動。</p>
+            <p class="mt-2 text-xs text-neutral-500">※ 黒っぽい画面のシンプルなウィンドウが開けば OK。</p>
+          </div>
+        </li>
+
+        <li class="flex gap-4">
+          <span class="text-neutral-300 tabular-nums text-xs pt-1 shrink-0">04</span>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-neutral-900 mb-2">下のコマンドをコピーして、ターミナルに貼り付け → Enter</p>
+            <div class="relative">
+              <pre class="text-[12px] bg-neutral-950 text-neutral-100 pl-4 pr-20 py-3 rounded-lg overflow-x-auto leading-relaxed font-mono"><span class="text-neutral-500 select-none">$ </span><code id="mac-cmd">{macCmd}</code></pre>
+              <button
+                type="button"
+                data-copy-target="mac-cmd"
+                class="absolute top-2 right-2 text-[10px] uppercase tracking-widest text-neutral-400 hover:text-white border border-neutral-700 hover:border-neutral-500 px-2 py-1 rounded transition"
+                aria-label="コマンドをコピー"
+              >Copy</button>
+            </div>
+            <p class="mt-2 text-xs text-neutral-500">
+              右上の <span class="font-medium text-neutral-900">Copy</span> を押すとコピーできます。ターミナルで <kbd class="text-[11px] bg-neutral-100 border border-neutral-200 px-1 py-0.5 rounded font-mono">⌘</kbd> + <kbd class="text-[11px] bg-neutral-100 border border-neutral-200 px-1 py-0.5 rounded font-mono">V</kbd> で貼り付け、<kbd class="text-[11px] bg-neutral-100 border border-neutral-200 px-1 py-0.5 rounded font-mono">Enter</kbd>。何もメッセージが出ずに次の行が戻れば成功です。
+            </p>
+          </div>
+        </li>
+
+        <li class="flex gap-4">
+          <span class="text-neutral-300 tabular-nums text-xs pt-1 shrink-0">05</span>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-neutral-900 mb-1">SCATT Companion を起動</p>
+            <p>Launchpad、または <code class="text-[11px] bg-neutral-100 px-1.5 py-0.5 rounded">アプリケーション</code> フォルダから SCATT Companion をダブルクリック。<br>
+            「インターネットからダウンロードされたアプリです。開いてもよろしいですか？」と表示されたら <em class="not-italic font-medium text-neutral-900">開く</em>。</p>
+            <p class="mt-2 text-xs text-neutral-500">※ 2 回目以降はそのままダブルクリックで起動します。</p>
+          </div>
+        </li>
+      </ol>
+
+      <p class="mt-8 pt-5 border-t border-neutral-100 text-xs text-neutral-400 leading-relaxed">
+        Apple Developer 署名なし配布のため、Gatekeeper の隔離属性を一度だけ解除する手順です。アプリは手元の Mac で完結し、外部に通信しません。
+      </p>
+    </div>
+
+    <details class="border-t border-neutral-200 group">
+      <summary class="px-8 py-5 cursor-pointer text-sm font-medium text-neutral-700 hover:text-neutral-900 flex items-center justify-between list-none">
+        <span><span class="text-xs uppercase tracking-widest text-neutral-400 mr-3">削除</span>macOS から SCATT Companion を消す</span>
+        <span class="text-neutral-400 group-open:rotate-45 transition-transform text-xl leading-none">+</span>
+      </summary>
+      <div class="px-8 pb-8 text-sm text-neutral-700 leading-relaxed space-y-6">
+        <div>
+          <p class="font-medium text-neutral-900 mb-2">アプリだけ削除する</p>
+          <p>
+            <code class="text-[11px] bg-neutral-100 px-1.5 py-0.5 rounded">アプリケーション</code> フォルダから <code class="text-[11px] bg-neutral-100 px-1.5 py-0.5 rounded">SCATT&nbsp;Companion.app</code> をゴミ箱にドラッグ → ゴミ箱を空にする。
+          </p>
+          <p class="mt-2 text-xs text-neutral-500">
+            ※ 心拍データや設定は残ります。再インストール時に引き継げます。
+          </p>
+        </div>
+
+        <div class="pt-5 border-t border-neutral-100">
+          <p class="font-medium text-neutral-900 mb-2">設定・心拍データも含めて完全に削除する</p>
+          <p class="mb-3">ターミナル.app で以下を実行 (上のステップ 03 にターミナルの開き方があります)。</p>
+          <div class="relative">
+            <pre class="text-[12px] bg-neutral-950 text-neutral-100 pl-4 pr-20 py-3 rounded-lg overflow-x-auto leading-relaxed font-mono"><span class="text-neutral-500 select-none">$ </span><code id="mac-purge">{macPurgeCmd}</code></pre>
+            <button
+              type="button"
+              data-copy-target="mac-purge"
+              class="absolute top-2 right-2 text-[10px] uppercase tracking-widest text-neutral-400 hover:text-white border border-neutral-700 hover:border-neutral-500 px-2 py-1 rounded transition"
+              aria-label="コマンドをコピー"
+            >Copy</button>
+          </div>
+          <ul class="mt-3 text-xs text-neutral-500 space-y-1">
+            <li>アプリ本体: <code class="text-[10px] bg-neutral-100 px-1 py-0.5 rounded">/Applications/SCATT&nbsp;Companion.app</code></li>
+            <li>心拍・記録 DB: <code class="text-[10px] bg-neutral-100 px-1 py-0.5 rounded">~/Library/Application&nbsp;Support/scatt-companion</code></li>
+            <li>ログ: <code class="text-[10px] bg-neutral-100 px-1 py-0.5 rounded">~/Library/Logs/scatt-analyzer</code></li>
+            <li>環境設定: <code class="text-[10px] bg-neutral-100 px-1 py-0.5 rounded">~/Library/Preferences/com.scatt-companion.app*.plist</code></li>
+          </ul>
+        </div>
+
+        <p class="text-xs text-neutral-400 leading-relaxed">
+          SCATT Expert 本体の <code class="text-[10px] bg-neutral-100 px-1 py-0.5 rounded">storage.dat</code> は SCATT Companion の管理外なので、削除しても SCATT Expert の射撃データは消えません。
+        </p>
+      </div>
+    </details>
+  </article>
+
+  <!-- ====== Windows ブロック ====== -->
+  <article id="win-start" class="bg-white rounded-2xl border border-neutral-200 overflow-hidden scroll-mt-20">
+    <header class="px-8 py-6 border-b border-neutral-200 bg-neutral-50/60">
+      <p class="text-xs uppercase tracking-widest text-neutral-400 mb-1">Windows 10+</p>
+      <h3 class="text-xl font-semibold text-neutral-900">Windows (NSIS)</h3>
+      <p class="text-xs text-neutral-500 mt-1">約 35 MB / per-user、管理者権限不要</p>
+    </header>
+
+    <div class="px-8 py-8">
+      <p class="text-xs uppercase tracking-widest text-neutral-400 mb-6">初回起動 (4 ステップ)</p>
+
+      <ol class="text-sm text-neutral-700 space-y-6 leading-relaxed">
+        <li class="flex gap-4">
+          <span class="text-neutral-300 tabular-nums text-xs pt-1 shrink-0">01</span>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-neutral-900 mb-2">インストーラをダウンロード</p>
+            <a
+              href={exeUrl}
+              class="inline-block rounded-full bg-neutral-900 text-white px-5 py-2 text-sm font-medium hover:bg-neutral-700 transition"
+            >
+              ダウンロード v{version}
+            </a>
+            <p class="mt-2 text-xs text-neutral-400">約 35 MB / GitHub Releases から配信</p>
+          </div>
+        </li>
+
+        <li class="flex gap-4">
+          <span class="text-neutral-300 tabular-nums text-xs pt-1 shrink-0">02</span>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-neutral-900 mb-1">.exe をダブルクリック</p>
+            <p>ダウンロードフォルダの <code class="text-[11px] bg-neutral-100 px-1.5 py-0.5 rounded">SCATT-Companion-Setup-{version}.exe</code> をダブルクリックで実行。</p>
+          </div>
+        </li>
+
+        <li class="flex gap-4">
+          <span class="text-neutral-300 tabular-nums text-xs pt-1 shrink-0">03</span>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-neutral-900 mb-1">SmartScreen の警告を進める</p>
+            <p>青い画面で「Windows によって PC が保護されました」と表示されたら、<br>
+            <em class="not-italic font-medium text-neutral-900">詳細情報</em> をクリック → <em class="not-italic font-medium text-neutral-900">実行</em> ボタンを押す。</p>
+            <p class="mt-2 text-xs text-neutral-500">※ そのまま「実行しない」を押すと進めなくなります。</p>
+          </div>
+        </li>
+
+        <li class="flex gap-4">
+          <span class="text-neutral-300 tabular-nums text-xs pt-1 shrink-0">04</span>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-neutral-900 mb-1">SCATT Companion を起動</p>
+            <p>インストール完了後、スタートメニュー (画面左下の Windows マーク) から <span class="font-medium text-neutral-900">SCATT Companion</span> を探してクリック。</p>
+            <p class="mt-2 text-xs text-neutral-500">※ 2 回目以降は普通のアプリと同じように起動できます。</p>
+          </div>
+        </li>
+      </ol>
+
+      <p class="mt-8 pt-5 border-t border-neutral-100 text-xs text-neutral-400 leading-relaxed">
+        コードサイニング証明書なし配布のため、SmartScreen の初回学習を一度だけ通します。管理者権限は不要で、ユーザーフォルダ内にのみインストールされます。
+      </p>
+    </div>
+
+    <details class="border-t border-neutral-200 group">
+      <summary class="px-8 py-5 cursor-pointer text-sm font-medium text-neutral-700 hover:text-neutral-900 flex items-center justify-between list-none">
+        <span><span class="text-xs uppercase tracking-widest text-neutral-400 mr-3">削除</span>Windows から SCATT Companion を消す</span>
+        <span class="text-neutral-400 group-open:rotate-45 transition-transform text-xl leading-none">+</span>
+      </summary>
+      <div class="px-8 pb-8 text-sm text-neutral-700 leading-relaxed space-y-6">
+        <div>
+          <p class="font-medium text-neutral-900 mb-2">アプリだけ削除する</p>
+          <p>
+            <em class="not-italic font-medium text-neutral-900">設定</em> → <em class="not-italic font-medium text-neutral-900">アプリ</em> → <em class="not-italic font-medium text-neutral-900">インストールされているアプリ</em> から <span class="font-medium text-neutral-900">SCATT Companion</span> を選び、<em class="not-italic font-medium text-neutral-900">アンインストール</em>。
+          </p>
+          <p class="mt-2 text-xs text-neutral-500">
+            ※ スタートメニュー → SCATT Companion → <em class="not-italic font-medium text-neutral-900">Uninstall</em> でも同じ。心拍データや設定は残ります。
+          </p>
+        </div>
+
+        <div class="pt-5 border-t border-neutral-100">
+          <p class="font-medium text-neutral-900 mb-2">設定・心拍データも含めて完全に削除する</p>
+          <p class="mb-3">
+            スタートメニューで「<span class="font-medium text-neutral-900">cmd</span>」と入力 → <em class="not-italic font-medium text-neutral-900">コマンドプロンプト</em> を起動。下のコマンドを貼り付け (右クリック貼り付け) → <kbd class="text-[11px] bg-neutral-100 border border-neutral-200 px-1 py-0.5 rounded font-mono">Enter</kbd>。
+          </p>
+          <div class="relative">
+            <pre class="text-[12px] bg-neutral-950 text-neutral-100 pl-4 pr-20 py-3 rounded-lg overflow-x-auto leading-relaxed font-mono"><span class="text-neutral-500 select-none">&gt; </span><code id="win-purge">{winPurgeCmd}</code></pre>
+            <button
+              type="button"
+              data-copy-target="win-purge"
+              class="absolute top-2 right-2 text-[10px] uppercase tracking-widest text-neutral-400 hover:text-white border border-neutral-700 hover:border-neutral-500 px-2 py-1 rounded transition"
+              aria-label="コマンドをコピー"
+            >Copy</button>
+          </div>
+          <ul class="mt-3 text-xs text-neutral-500 space-y-1">
+            <li>心拍・記録 DB: <code class="text-[10px] bg-neutral-100 px-1 py-0.5 rounded">%APPDATA%\scatt-companion</code></li>
+            <li>ログ: <code class="text-[10px] bg-neutral-100 px-1 py-0.5 rounded">%LOCALAPPDATA%\scatt-analyzer</code></li>
+            <li>環境設定 (レジストリ): <code class="text-[10px] bg-neutral-100 px-1 py-0.5 rounded">HKCU\Software\scatt-companion</code></li>
+          </ul>
+          <p class="mt-2 text-xs text-neutral-500">
+            ※ アプリ本体は先にアンインストーラで消してから実行してください。
+          </p>
+        </div>
+
+        <p class="text-xs text-neutral-400 leading-relaxed">
+          SCATT Expert 本体は別ソフトです。SCATT Companion を削除しても SCATT Expert の射撃データは消えません。
+        </p>
+      </div>
+    </details>
+  </article>
+
+  <details class="mt-12 border-t border-neutral-200 pt-6">
     <summary class="cursor-pointer text-sm text-neutral-700 hover:text-neutral-900">
       ソースからビルドする (上級)
     </summary>
@@ -48,3 +286,26 @@ make install
 make gui</code></pre>
   </details>
 </Section>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy-target]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-copy-target');
+      if (!id) return;
+      const text = document.getElementById(id)?.textContent ?? '';
+      try {
+        await navigator.clipboard.writeText(text);
+        const original = btn.textContent;
+        btn.textContent = 'Copied';
+        btn.classList.add('text-emerald-400', 'border-emerald-700');
+        setTimeout(() => {
+          btn.textContent = original;
+          btn.classList.remove('text-emerald-400', 'border-emerald-700');
+        }, 1500);
+      } catch {
+        btn.textContent = 'Failed';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+      }
+    });
+  });
+</script>
